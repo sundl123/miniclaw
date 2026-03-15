@@ -8,8 +8,8 @@ import sys
 import json
 import requests
 
-# MiniMax 文本对话 API
-BASE_URL = "https://api.minimax.io"
+# MiniMax 文本对话 API（域名为 api.minimaxi.com）
+BASE_URL = "https://api.minimaxi.com"
 CHAT_URL = f"{BASE_URL}/v1/text/chatcompletion_v2"
 DEFAULT_MODEL = "MiniMax-M2.5"
 
