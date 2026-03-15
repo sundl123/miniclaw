@@ -22,7 +22,7 @@ python chat.py
 可选环境变量：
 
 - `MINIMAX_API_KEY`（必填）：MiniMax API Key
-- `MINIMAX_MODEL`：模型名，默认 `M2-her`
+- `MINIMAX_MODEL`：模型名，默认 `MiniMax-M2.5`（若报错可试 `M2-her`）
 - `MINIMAX_SYSTEM`：可选 system 角色设定（如人设、规则）
 
 ### 对话内命令

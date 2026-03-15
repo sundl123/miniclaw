@@ -11,7 +11,7 @@ import requests
 # MiniMax 文本对话 API
 BASE_URL = "https://api.minimax.io"
 CHAT_URL = f"{BASE_URL}/v1/text/chatcompletion_v2"
-DEFAULT_MODEL = "M2-her"
+DEFAULT_MODEL = "MiniMax-M2.5"
 
 
 def get_api_key() -> str:
