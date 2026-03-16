@@ -14,9 +14,11 @@
 
 **主要入口与结构**：
 
-- `chat.py`：命令行对话主程序；内含技能扫描、system 构建、code_execution 工具实现、MiniMax 请求与 tool 调用循环。
+- `chat.py`：入口脚本，仅调用 `miniclaw.cli.main()`。
+- `miniclaw/` 包：`config.py`（常量）、`skills.py`（技能扫描与 system 文案）、`code_execution.py`（工具实现）、`api.py`（MiniMax 请求与 tool 循环）、`cli.py`（REPL 主流程）。
 - `.skills/`：技能目录，每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。示例：`.skills/example-skill/`。
-- 工作区根固定为 `chat.py` 所在目录；所有文件与 bash 的 cwd 均为该根目录，路径禁止 `..` 逃逸。
+- `tests/`：单元测试（`test_skills.py`、`test_code_execution.py`、`test_api.py`）。
+- 工作区根固定为项目根（即 `chat.py` 所在目录）；所有文件与 bash 的 cwd 均为该根目录，路径禁止 `..` 逃逸。
 
 **运行方式**：`MINIMAX_API_KEY=your_key python3 chat.py`。详见 [README.md](README.md)。
 

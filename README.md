@@ -41,3 +41,24 @@ python3 chat.py
 
 - **工作区**：所有文件与 bash 的工作目录为 chat.py 所在项目根，路径禁止 `..` 逃逸。
 - **run_bash**：当前未对命令做白名单限制，模型可执行任意 bash。请勿在生产环境或不可信输入下开放使用，避免执行有害命令。
+
+### 项目结构
+
+```
+miniclaw/
+├── chat.py              # 入口
+├── miniclaw/            # 包
+│   ├── config.py        # 常量
+│   ├── skills.py        # 技能扫描与 system 文案
+│   ├── code_execution.py # 工具实现
+│   ├── api.py           # MiniMax API 与 tool 循环
+│   └── cli.py           # 命令行 REPL
+├── tests/               # 单元测试
+└── .skills/             # 技能目录
+```
+
+### 运行测试
+
+```bash
+python3 -m unittest discover -s tests -v
+```
