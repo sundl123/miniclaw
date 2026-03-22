@@ -79,12 +79,31 @@ def _edit_file(arguments: dict, workspace_root: str) -> str:
     return f"Replaced content of: {path}"
 
 
+def _print_code_execution_invocation(arguments: dict, action: str) -> None:
+    """向 stdout 打印当前 code_execution 调用，便于 REPL 用户看到进度。"""
+    parts = [f"[调用工具] code_execution · {action}"]
+    if action in ("view_file", "create_file", "edit_file"):
+        p = (arguments.get("path") or "").strip()
+        if p:
+            parts.append(f"path={p}")
+    elif action == "run_bash":
+        cmd = (arguments.get("command") or "").strip()
+        if cmd:
+            if len(cmd) > 100:
+                cmd = cmd[:100] + "…"
+            parts.append(f"command={cmd}")
+    print(" ".join(parts), flush=True)
+
+
 def handle_code_execution(arguments: dict, workspace_root: str = None) -> str:
     """执行 code_execution 工具：根据 action 分发到 run_bash / view_file / create_file / edit_file。"""
     root = workspace_root or WORKSPACE_ROOT
     action = (arguments.get("action") or "").strip()
     if not action:
+        print("[调用工具] code_execution · (缺少 action)", flush=True)
         return json.dumps({"error": "缺少 action 参数"}, ensure_ascii=False)
+
+    _print_code_execution_invocation(arguments, action)
 
     try:
         if action == "run_bash":
