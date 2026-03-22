@@ -6,11 +6,13 @@ import requests
 
 from miniclaw.api import get_api_key, run_turn_with_tools
 from miniclaw.config import DEFAULT_MODEL
+from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.code_execution import get_code_execution_tool_schema
 
 
 def main() -> None:
+    setup_dev_logging()
     api_key = get_api_key()
     model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
     skill_meta = scan_skills_metadata()
