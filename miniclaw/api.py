@@ -7,6 +7,7 @@ import requests
 
 from miniclaw.config import CHAT_URL, CHAT_URL_OPENAI, DEFAULT_MODEL
 from miniclaw.code_execution import handle_code_execution
+from miniclaw.dev_logging import get_dev_logger
 
 
 def get_api_key() -> str:
@@ -34,6 +35,15 @@ def chat_raw(api_key: str, messages: list[dict], model: str = DEFAULT_MODEL, **k
     url = CHAT_URL_OPENAI if use_tools else CHAT_URL
     if use_tools and "extra_body" not in kwargs:
         payload["extra_body"] = {"reasoning_split": True}
+
+    log_headers = {**headers, "Authorization": "Bearer ***"}
+    req_record = {"url": url, "headers": log_headers, "payload": payload}
+    try:
+        req_text = json.dumps(req_record, ensure_ascii=False, indent=2, default=str)
+    except TypeError:
+        req_text = repr(req_record)
+    get_dev_logger().info("chat_raw request\n%s", req_text)
+
     resp = requests.post(url, headers=headers, json=payload, timeout=120)
     resp.raise_for_status()
     data = resp.json()
