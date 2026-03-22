@@ -5,7 +5,7 @@ import sys
 
 import requests
 
-from miniclaw.config import CHAT_URL, CHAT_URL_OPENAI, DEFAULT_MODEL
+from miniclaw.config import CHAT_URL, CHAT_URL_OPENAI, DEFAULT_MODEL, HTTP_TIMEOUT
 from miniclaw.code_execution import handle_code_execution
 from miniclaw.dev_logging import get_dev_logger
 
@@ -44,7 +44,7 @@ def chat_raw(api_key: str, messages: list[dict], model: str = DEFAULT_MODEL, **k
         req_text = repr(req_record)
     get_dev_logger().info("chat_raw request\n%s", req_text)
 
-    resp = requests.post(url, headers=headers, json=payload, timeout=120)
+    resp = requests.post(url, headers=headers, json=payload, timeout=HTTP_TIMEOUT)
     resp.raise_for_status()
     data = resp.json()
 
