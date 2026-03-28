@@ -56,13 +56,7 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
     if workspace_root:
         workspace_line = f"\n当前工作区目录：{workspace_root}\n"
     lines = [
-        "你是助手，拥有以下工具可以使用：",
-        "- read: 读取文件内容（带行号），支持 offset/limit 部分读取",
-        "- write: 写入文件（覆盖，自动创建父目录）",
-        "- edit: 精确字符串替换（old_string → new_string，必须恰好匹配一次）",
-        "- glob: 按模式查找工作区内的文件",
-        "- grep: 按正则搜索工作区内的文件内容",
-        "- bash: 在工作区内执行 shell 命令",
+        "你是助手，可以使用提供的工具来完成任务。",
         workspace_line,
         "## 技能（Skills）的访问方式",
         "技能存放在工作区根目录下的 .skills 目录中。",
