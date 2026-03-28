@@ -17,10 +17,10 @@
 - `chat.py`：入口脚本，仅调用 `miniclaw.cli.main()`。
 - `miniclaw/` 包：`config.py`（常量）、`skills.py`（技能扫描与 system 文案）、`code_execution.py`（工具实现）、`api.py`（MiniMax 请求与 tool 循环）、`cli.py`（REPL 主流程）。
 - `.skills/`：技能目录，每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。示例：`.skills/example-skill/`。
-- `tests/`：单元测试（`test_skills.py`、`test_code_execution.py`、`test_api.py`）。
-- 工作区根固定为项目根（即 `chat.py` 所在目录）；所有文件与 bash 的 cwd 均为该根目录，路径禁止 `..` 逃逸。
+- `tests/`：单元测试（`test_skills.py`、`test_code_execution.py`、`test_api.py`、`test_cli.py`）。
+- 工作区根默认为项目根（即 `chat.py` 所在目录），可通过 `--workspace`（`-w`）参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > 项目根）；所有文件与 bash 的 cwd 均为工作区根目录，路径禁止 `..` 逃逸。
 
-**运行方式**：`MINIMAX_API_KEY=your_key python3 chat.py`。详见 [README.md](README.md)。
+**运行方式**：`MINIMAX_API_KEY=your_key python3 chat.py`（可附加 `--workspace /path/to/dir`）。详见 [README.md](README.md)。
 
 ---
 

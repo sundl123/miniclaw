@@ -1,29 +1,56 @@
 """命令行 REPL：读入、内置命令、调用 API 与 tool 循环。"""
+import argparse
 import os
 import sys
+from typing import Optional
 
 import requests
 
 from miniclaw.api import get_api_key, run_turn_with_tools
-from miniclaw.config import DEFAULT_MODEL
+from miniclaw.config import DEFAULT_MODEL, WORKSPACE_ROOT
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
-from miniclaw.code_execution import get_code_execution_tool_schema
+from miniclaw.tools import get_tool_schemas
+
+
+def resolve_workspace(cli_arg: Optional[str]) -> str:
+    """按优先级解析工作区目录：CLI 参数 > 环境变量 > 项目根。"""
+    raw = cli_arg or os.environ.get("MINICLAW_WORKSPACE", "").strip() or WORKSPACE_ROOT
+    workspace = os.path.abspath(raw)
+    if not os.path.isdir(workspace):
+        print(f"错误: 工作区目录不存在: {workspace}", file=sys.stderr)
+        sys.exit(1)
+    return workspace
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="MiniMax 命令行 LLM 对话工具，支持 code-execution 与 .skills 技能目录",
+    )
+    parser.add_argument(
+        "-w", "--workspace",
+        default=None,
+        help="工作区目录（技能扫描与文件操作的根）。也可通过 MINICLAW_WORKSPACE 环境变量设置。"
+             "未指定时默认为项目根目录。",
+    )
+    args = parser.parse_args()
+
     setup_dev_logging()
     api_key = get_api_key()
     model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
-    skill_meta = scan_skills_metadata()
-    system_prompt = build_system_prompt(skill_meta)
+    workspace = resolve_workspace(args.workspace)
+
+    skills_dir = os.path.join(workspace, ".skills")
+    skill_meta = scan_skills_metadata(skills_dir)
+    system_prompt = build_system_prompt(skill_meta, workspace_root=workspace)
     extra_system = os.environ.get("MINIMAX_SYSTEM", "").strip()
     if extra_system:
         system_prompt = system_prompt + "\n\n" + extra_system
-    tools = [get_code_execution_tool_schema()]
+    tools = get_tool_schemas()
 
     messages = [{"role": "system", "content": system_prompt}]
 
+    print(f"工作区: {workspace}")
     print("MiniMax 命令行对话 + Code Execution + .skills (输入 /quit 退出, /clear 清空历史, /model 查看当前模型)")
     print("-" * 50)
 
@@ -51,7 +78,8 @@ def main() -> None:
 
         try:
             reply, messages = run_turn_with_tools(
-                api_key, model, messages, tools, print_reasoning=True
+                api_key, model, messages, tools,
+                print_reasoning=True, workspace_root=workspace,
             )
             print(f"\nMiniMax: {reply}\n")
         except requests.RequestException as e:
