@@ -56,13 +56,19 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
     if workspace_root:
         workspace_line = f"\n当前工作区目录：{workspace_root}\n"
     lines = [
-        "你是助手，拥有一个 code_execution 工具，可以：执行 bash 命令、查看/创建/编辑工作区内的文件。",
+        "你是助手，拥有以下工具可以使用：",
+        "- read: 读取文件内容（带行号），支持 offset/limit 部分读取",
+        "- write: 写入文件（覆盖，自动创建父目录）",
+        "- edit: 精确字符串替换（old_string → new_string，必须恰好匹配一次）",
+        "- glob: 按模式查找工作区内的文件",
+        "- grep: 按正则搜索工作区内的文件内容",
+        "- bash: 在工作区内执行 shell 命令",
         workspace_line,
         "## 技能（Skills）的访问方式",
         "技能存放在工作区根目录下的 .skills 目录中。",
         "每个技能对应一个子目录，例如 .skills/<skill_name>/。",
         "目录内必有 SKILL.md，描述该技能的用途与使用方式；可能还有 assets/ 等子目录存放模板或脚本。",
-        "当你认为用户需求可能涉及某技能时，应先用 view_file 查看对应 .skills/<skill_name>/SKILL.md，再根据 SKILL.md 的说明决定是否执行 bash 或读写其他文件。",
+        "当你认为用户需求可能涉及某技能时，应先用 read 查看对应 .skills/<skill_name>/SKILL.md，再根据 SKILL.md 的说明决定是否执行 bash 或读写其他文件。",
         "",
         "## 当前可用技能列表（自动从 .skills 扫描）",
     ]

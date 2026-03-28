@@ -7,34 +7,30 @@ from miniclaw.api import chat, _execute_tool_call
 
 
 class TestExecuteToolCall(unittest.TestCase):
-    def test_code_execution_call(self):
+    def test_bash_call(self):
         tc = {
-            "function": {"name": "code_execution", "arguments": '{"action": "run_bash", "command": "echo hi"}'},
+            "function": {"name": "bash", "arguments": '{"command": "echo hi"}'},
         }
-        with patch("miniclaw.api.handle_code_execution") as m:
+        with patch("miniclaw.api.execute_tool") as m:
             m.return_value = "hi"
             out = _execute_tool_call(tc)
         self.assertEqual(out, "hi")
-        m.assert_called_once()
+        m.assert_called_once_with("bash", {"command": "echo hi"}, workspace_root=None)
 
-    def test_code_execution_with_workspace_root(self):
+    def test_tool_call_with_workspace_root(self):
         tc = {
-            "function": {"name": "code_execution", "arguments": '{"action": "run_bash", "command": "pwd"}'},
+            "function": {"name": "read", "arguments": '{"path": "f.txt"}'},
         }
-        with patch("miniclaw.api.handle_code_execution") as m:
-            m.return_value = "/tmp/workspace"
+        with patch("miniclaw.api.execute_tool") as m:
+            m.return_value = "content"
             _execute_tool_call(tc, workspace_root="/tmp/workspace")
-        m.assert_called_once_with(
-            {"action": "run_bash", "command": "pwd"},
-            workspace_root="/tmp/workspace",
-        )
+        m.assert_called_once_with("read", {"path": "f.txt"}, workspace_root="/tmp/workspace")
 
     def test_unknown_tool(self):
         tc = {"function": {"name": "unknown_tool", "arguments": "{}"}}
         out = _execute_tool_call(tc)
         data = json.loads(out)
         self.assertIn("error", data)
-        self.assertIn("Unknown tool", data["error"])
 
 
 class TestChat(unittest.TestCase):

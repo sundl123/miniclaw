@@ -6,7 +6,7 @@ import sys
 import requests
 
 from miniclaw.config import CHAT_URL, CHAT_URL_OPENAI, DEFAULT_MODEL, HTTP_TIMEOUT
-from miniclaw.code_execution import handle_code_execution
+from miniclaw.tools import execute_tool
 from miniclaw.dev_logging import get_dev_logger
 
 
@@ -76,9 +76,7 @@ def _execute_tool_call(tc: dict, *, workspace_root: str = None) -> str:
         args = json.loads(args_str) if isinstance(args_str, str) else args_str
     except json.JSONDecodeError:
         args = {}
-    if name == "code_execution":
-        return handle_code_execution(args, workspace_root=workspace_root)
-    return json.dumps({"error": f"Unknown tool: {name}"}, ensure_ascii=False)
+    return execute_tool(name, args, workspace_root=workspace_root)
 
 
 def run_turn_with_tools(

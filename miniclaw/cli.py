@@ -10,7 +10,7 @@ from miniclaw.api import get_api_key, run_turn_with_tools
 from miniclaw.config import DEFAULT_MODEL, WORKSPACE_ROOT
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
-from miniclaw.code_execution import get_code_execution_tool_schema
+from miniclaw.tools import get_tool_schemas
 
 
 def resolve_workspace(cli_arg: Optional[str]) -> str:
@@ -46,7 +46,7 @@ def main() -> None:
     extra_system = os.environ.get("MINIMAX_SYSTEM", "").strip()
     if extra_system:
         system_prompt = system_prompt + "\n\n" + extra_system
-    tools = [get_code_execution_tool_schema()]
+    tools = get_tool_schemas()
 
     messages = [{"role": "system", "content": system_prompt}]
 
