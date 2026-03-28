@@ -17,6 +17,18 @@ class TestExecuteToolCall(unittest.TestCase):
         self.assertEqual(out, "hi")
         m.assert_called_once()
 
+    def test_code_execution_with_workspace_root(self):
+        tc = {
+            "function": {"name": "code_execution", "arguments": '{"action": "run_bash", "command": "pwd"}'},
+        }
+        with patch("miniclaw.api.handle_code_execution") as m:
+            m.return_value = "/tmp/workspace"
+            _execute_tool_call(tc, workspace_root="/tmp/workspace")
+        m.assert_called_once_with(
+            {"action": "run_bash", "command": "pwd"},
+            workspace_root="/tmp/workspace",
+        )
+
     def test_unknown_tool(self):
         tc = {"function": {"name": "unknown_tool", "arguments": "{}"}}
         out = _execute_tool_call(tc)

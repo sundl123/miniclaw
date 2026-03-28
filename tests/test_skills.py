@@ -64,6 +64,14 @@ class TestBuildSystemPrompt(unittest.TestCase):
         self.assertIn("- b: B", out)
         self.assertIn(".skills", out)
 
+    def test_without_workspace_root(self):
+        out = build_system_prompt([])
+        self.assertNotIn("当前工作区目录", out)
+
+    def test_with_workspace_root(self):
+        out = build_system_prompt([], workspace_root="/tmp/my-workspace")
+        self.assertIn("当前工作区目录：/tmp/my-workspace", out)
+
 
 if __name__ == "__main__":
     unittest.main()

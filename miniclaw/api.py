@@ -67,7 +67,7 @@ def chat(api_key: str, messages: list[dict], model: str = DEFAULT_MODEL, **kwarg
     return (msg.get("content") or "").strip()
 
 
-def _execute_tool_call(tc: dict) -> str:
+def _execute_tool_call(tc: dict, *, workspace_root: str = None) -> str:
     """解析单条 tool_call 并执行，返回结果字符串。"""
     fn = tc.get("function") or {}
     name = fn.get("name", "")
@@ -77,7 +77,7 @@ def _execute_tool_call(tc: dict) -> str:
     except json.JSONDecodeError:
         args = {}
     if name == "code_execution":
-        return handle_code_execution(args)
+        return handle_code_execution(args, workspace_root=workspace_root)
     return json.dumps({"error": f"Unknown tool: {name}"}, ensure_ascii=False)
 
 
@@ -88,6 +88,7 @@ def run_turn_with_tools(
     tools: list[dict],
     *,
     print_reasoning: bool = True,
+    workspace_root: str = None,
 ) -> tuple[str, list[dict]]:
     """带 tool 的对话循环：请求 → 若有 tool_calls 则执行并追加消息 → 再请求，直到无 tool_calls。"""
     while True:
@@ -109,5 +110,5 @@ def run_turn_with_tools(
 
         for tc in tool_calls:
             tid = tc.get("id") or tc.get("tool_use_id")
-            result = _execute_tool_call(tc)
+            result = _execute_tool_call(tc, workspace_root=workspace_root)
             messages.append({"role": "tool", "tool_call_id": tid, "content": result})

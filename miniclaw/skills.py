@@ -50,11 +50,14 @@ def scan_skills_metadata(skills_dir: str = None) -> list[dict]:
     return result
 
 
-def build_system_prompt(skill_metadata_list: list[dict]) -> str:
+def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str = None) -> str:
     """根据技能元数据列表拼接 system prompt。"""
+    workspace_line = ""
+    if workspace_root:
+        workspace_line = f"\n当前工作区目录：{workspace_root}\n"
     lines = [
         "你是助手，拥有一个 code_execution 工具，可以：执行 bash 命令、查看/创建/编辑工作区内的文件。",
-        "",
+        workspace_line,
         "## 技能（Skills）的访问方式",
         "技能存放在工作区根目录下的 .skills 目录中。",
         "每个技能对应一个子目录，例如 .skills/<skill_name>/。",

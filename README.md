@@ -21,11 +21,20 @@ export MINIMAX_API_KEY=your_api_key
 python3 chat.py
 ```
 
+指定工作区目录（技能扫描与文件操作的根目录）：
+
+```bash
+python3 chat.py --workspace /path/to/workspace
+# 或简写
+python3 chat.py -w /path/to/workspace
+```
+
 可选环境变量：
 
 - `MINIMAX_API_KEY`（必填）：MiniMax API Key
 - `MINIMAX_MODEL`：模型名，默认 `MiniMax-M2.5`
 - `MINIMAX_SYSTEM`：可选，追加到 system 的额外说明（如人设、规则）
+- `MINICLAW_WORKSPACE`：工作区目录，也可通过 `--workspace` 参数指定（CLI 参数优先）。未指定时默认为项目根目录
 
 ### 对话内命令
 
@@ -39,7 +48,7 @@ python3 chat.py
 
 ### 安全说明
 
-- **工作区**：所有文件与 bash 的工作目录为 chat.py 所在项目根，路径禁止 `..` 逃逸。
+- **工作区**：所有文件与 bash 的工作目录默认为 chat.py 所在项目根，可通过 `--workspace` 或 `MINICLAW_WORKSPACE` 自定义。路径禁止 `..` 逃逸。
 - **run_bash**：当前未对命令做白名单限制，模型可执行任意 bash。请勿在生产环境或不可信输入下开放使用，避免执行有害命令。
 
 ### 项目结构
