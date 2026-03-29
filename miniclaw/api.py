@@ -3,6 +3,8 @@ import json
 import os
 import sys
 import time
+from dataclasses import dataclass, field
+from typing import Optional
 
 from openai import OpenAI
 
@@ -102,6 +104,107 @@ def _accumulate_reasoning_delta(acc: dict, rd_list) -> None:
             acc[idx]["text"] += text
 
 
+@dataclass
+class _StreamResult:
+    """流式响应的累积结果。"""
+    content_parts: list[str] = field(default_factory=list)
+    tool_calls_acc: dict[int, dict] = field(default_factory=dict)
+    reasoning_acc: dict[int, dict] = field(default_factory=dict)
+    usage: object = None
+    ttft: Optional[float] = None
+    ttfc: Optional[float] = None
+
+
+class _StreamPrinter:
+    """处理流式输出的终端打印逻辑（前导换行过滤、thinking 提示管理）。"""
+
+    _THINKING_HINT = "[思考中...]"
+    _HINT_CLEAR_WIDTH = 20
+
+    def __init__(self, *, enabled: bool = True, show_reasoning: bool = False):
+        self._enabled = enabled
+        self._show_reasoning = show_reasoning
+        self._thinking_shown = False
+        self._content_started = False
+
+    def on_reasoning(self) -> None:
+        if self._enabled and self._show_reasoning and not self._thinking_shown:
+            self._thinking_shown = True
+            print(self._THINKING_HINT, end="", flush=True)
+
+    def on_content(self, text: str) -> None:
+        if not self._enabled:
+            return
+        display = text
+        if not self._content_started:
+            display = display.lstrip("\n")
+            if display:
+                self._content_started = True
+                if self._thinking_shown:
+                    self._clear_hint()
+        if display:
+            print(display, end="", flush=True)
+
+    def finish(self) -> None:
+        if self._thinking_shown and not self._content_started and self._enabled:
+            self._clear_hint()
+
+    def _clear_hint(self) -> None:
+        print("\r" + " " * self._HINT_CLEAR_WIDTH + "\r", end="", flush=True)
+
+
+def _consume_stream(
+    stream, printer: _StreamPrinter, start_time: float,
+) -> _StreamResult:
+    """消费流式响应，累积内容 / tool_calls / reasoning 并通过 printer 输出。"""
+    result = _StreamResult()
+
+    for chunk in stream:
+        if chunk.usage:
+            result.usage = chunk.usage
+
+        if not chunk.choices:
+            continue
+
+        delta = chunk.choices[0].delta
+        has_reasoning = hasattr(delta, "reasoning_details") and delta.reasoning_details
+
+        if result.ttft is None and (delta.content or has_reasoning or delta.tool_calls):
+            result.ttft = time.monotonic() - start_time
+
+        if has_reasoning:
+            _accumulate_reasoning_delta(result.reasoning_acc, delta.reasoning_details)
+            printer.on_reasoning()
+
+        if delta.content:
+            if result.ttfc is None:
+                result.ttfc = time.monotonic() - start_time
+            result.content_parts.append(delta.content)
+            printer.on_content(delta.content)
+
+        if delta.tool_calls:
+            for tc_delta in delta.tool_calls:
+                _accumulate_tool_call_delta(result.tool_calls_acc, tc_delta)
+
+    printer.finish()
+    return result
+
+
+def _build_message(result: _StreamResult) -> dict:
+    """从累积的流式数据构建 assistant message dict。"""
+    content = "".join(result.content_parts)
+    message: dict = {"role": "assistant", "content": content or ""}
+    if result.reasoning_acc:
+        message["reasoning_details"] = [
+            result.reasoning_acc[i] for i in sorted(result.reasoning_acc)
+        ]
+    if result.tool_calls_acc:
+        message["tool_calls"] = [
+            result.tool_calls_acc[i] for i in sorted(result.tool_calls_acc)
+        ]
+    return message
+
+
 def chat_stream(
     client: OpenAI,
     messages: list[dict],
@@ -124,75 +227,18 @@ def chat_stream(
         **kwargs,
     )
 
-    content_parts: list[str] = []
-    tool_calls_acc: dict[int, dict] = {}
-    reasoning_acc: dict[int, dict] = {}
-    usage = None
-    ttft_logged = False
-    ttfc_logged = False
-    _thinking_shown = False
-    _content_started = False
+    printer = _StreamPrinter(enabled=print_output, show_reasoning=print_reasoning)
+    result = _consume_stream(stream, printer, start)
+    message = _build_message(result)
 
-    for chunk in stream:
-        if chunk.usage:
-            usage = chunk.usage
+    if result.ttft is not None:
+        get_dev_logger().info("TTFT: %.3fs", result.ttft)
+    if result.ttfc is not None:
+        get_dev_logger().info("TTFC: %.3fs", result.ttfc)
+    if result.usage:
+        _log_cache_metrics(result.usage)
 
-        if not chunk.choices:
-            continue
-
-        delta = chunk.choices[0].delta
-        has_reasoning = hasattr(delta, "reasoning_details") and delta.reasoning_details
-
-        if not ttft_logged:
-            has_any_token = delta.content or has_reasoning or delta.tool_calls
-            if has_any_token:
-                ttft = time.monotonic() - start
-                get_dev_logger().info("TTFT: %.3fs", ttft)
-                ttft_logged = True
-
-        if has_reasoning:
-            _accumulate_reasoning_delta(reasoning_acc, delta.reasoning_details)
-            if print_output and print_reasoning and not _thinking_shown:
-                _thinking_shown = True
-                print("[思考中...]", end="", flush=True)
-
-        if delta.content:
-            if not ttfc_logged:
-                ttfc = time.monotonic() - start
-                get_dev_logger().info("TTFC: %.3fs", ttfc)
-                ttfc_logged = True
-            content_parts.append(delta.content)
-            if print_output:
-                display = delta.content
-                if not _content_started:
-                    display = display.lstrip("\n")
-                    if display:
-                        _content_started = True
-                        if _thinking_shown:
-                            print("\r" + " " * 20 + "\r", end="", flush=True)
-                if display:
-                    print(display, end="", flush=True)
-
-        if delta.tool_calls:
-            for tc_delta in delta.tool_calls:
-                _accumulate_tool_call_delta(tool_calls_acc, tc_delta)
-
-    if _thinking_shown and not _content_started and print_output:
-        print("\r" + " " * 20 + "\r", end="", flush=True)
-
-    tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] if tool_calls_acc else []
-    reasoning_details = [reasoning_acc[i] for i in sorted(reasoning_acc)] if reasoning_acc else []
-    content = "".join(content_parts)
-    message: dict = {"role": "assistant", "content": content or ""}
-    if reasoning_details:
-        message["reasoning_details"] = reasoning_details
-    if tool_calls:
-        message["tool_calls"] = tool_calls
-
-    if usage:
-        _log_cache_metrics(usage)
-
-    return message, usage
+    return message, result.usage
 
 
 # ---------------------------------------------------------------------------
