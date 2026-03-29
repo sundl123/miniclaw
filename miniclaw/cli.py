@@ -4,9 +4,9 @@ import os
 import sys
 from typing import Optional
 
-import requests
+import openai
 
-from miniclaw.api import get_api_key, run_turn_with_tools
+from miniclaw.api import create_client, get_api_key, run_turn_with_tools
 from miniclaw.config import DEFAULT_MODEL, WORKSPACE_ROOT
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
@@ -37,6 +37,7 @@ def main() -> None:
 
     setup_dev_logging()
     api_key = get_api_key()
+    client = create_client(api_key)
     model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
     workspace = resolve_workspace(args.workspace)
 
@@ -78,13 +79,16 @@ def main() -> None:
 
         try:
             reply, messages = run_turn_with_tools(
-                api_key, model, messages, tools,
+                client, model, messages, tools,
                 print_reasoning=True, workspace_root=workspace,
             )
-            print(f"\nMiniMax: {reply}\n")
-        except requests.RequestException as e:
-            print(f"\n[网络/请求错误] {e}\n", file=sys.stderr)
+            print("\n")
+        except openai.APIConnectionError as e:
+            print(f"\n[网络错误] {e}\n", file=sys.stderr)
+            messages.pop()
+        except openai.APIError as e:
+            print(f"\n[API 错误] {e}\n", file=sys.stderr)
             messages.pop()
         except RuntimeError as e:
-            print(f"\n[API 错误] {e}\n", file=sys.stderr)
+            print(f"\n[错误] {e}\n", file=sys.stderr)
             messages.pop()

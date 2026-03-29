@@ -11,8 +11,7 @@ DEV_LOG_DIR = os.environ.get("MINICLAW_DEV_LOG_DIR", "").strip() or os.path.join
 )
 
 BASE_URL = "https://api.minimaxi.com"
-CHAT_URL = f"{BASE_URL}/v1/text/chatcompletion_v2"
-CHAT_URL_OPENAI = f"{BASE_URL}/v1/chat/completions"
+OPENAI_BASE_URL = os.environ.get("MINIMAX_OPENAI_BASE_URL", "").strip() or f"{BASE_URL}/v1"
 DEFAULT_MODEL = "MiniMax-M2.5"
 
 # MiniMax HTTP 请求超时（秒，含连接与读）。可用 MINIMAX_HTTP_TIMEOUT 覆盖。
