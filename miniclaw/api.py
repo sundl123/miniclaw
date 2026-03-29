@@ -104,6 +104,7 @@ def chat_stream(
     tool_calls_acc: dict[int, dict] = {}
     usage = None
     ttft_logged = False
+    ttfc_logged = False
     _thinking_shown = False
     _content_started = False
 
@@ -116,6 +117,17 @@ def chat_stream(
 
         delta = chunk.choices[0].delta
 
+        if not ttft_logged:
+            has_any_token = (
+                delta.content
+                or (hasattr(delta, "reasoning_details") and delta.reasoning_details)
+                or delta.tool_calls
+            )
+            if has_any_token:
+                ttft = time.monotonic() - start
+                get_dev_logger().info("TTFT: %.3fs", ttft)
+                ttft_logged = True
+
         if (
             print_output
             and print_reasoning
@@ -127,10 +139,10 @@ def chat_stream(
             print("[思考中...]", end="", flush=True)
 
         if delta.content:
-            if not ttft_logged:
-                ttft = time.monotonic() - start
-                get_dev_logger().info("TTFT: %.3fs", ttft)
-                ttft_logged = True
+            if not ttfc_logged:
+                ttfc = time.monotonic() - start
+                get_dev_logger().info("TTFC: %.3fs", ttfc)
+                ttfc_logged = True
             content_parts.append(delta.content)
             if print_output:
                 display = delta.content
