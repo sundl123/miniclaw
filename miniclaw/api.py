@@ -63,6 +63,13 @@ def _log_cache_metrics(usage) -> None:
 # 流式请求
 # ---------------------------------------------------------------------------
 
+def _get_field(obj, key, default=None):
+    """从 dict 或 SDK 对象中安全提取字段值。"""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def _accumulate_tool_call_delta(acc: dict, tc_delta) -> None:
     """将单个 streaming tool_call delta 累加到 acc[index] 中。"""
     idx = tc_delta.index
@@ -76,6 +83,23 @@ def _accumulate_tool_call_delta(acc: dict, tc_delta) -> None:
             acc[idx]["function"]["name"] = fn.name
         if fn.arguments:
             acc[idx]["function"]["arguments"] += fn.arguments
+
+
+def _accumulate_reasoning_delta(acc: dict, rd_list) -> None:
+    """将 streaming reasoning_details chunk 逐条累加到 acc[index] 中。"""
+    for item in rd_list:
+        idx = _get_field(item, "index", 0) or 0
+        if idx not in acc:
+            acc[idx] = {
+                "type": _get_field(item, "type") or "reasoning.text",
+                "id": _get_field(item, "id") or "",
+                "format": _get_field(item, "format") or "",
+                "index": idx,
+                "text": "",
+            }
+        text = _get_field(item, "text") or ""
+        if text:
+            acc[idx]["text"] += text
 
 
 def chat_stream(
@@ -102,6 +126,7 @@ def chat_stream(
 
     content_parts: list[str] = []
     tool_calls_acc: dict[int, dict] = {}
+    reasoning_acc: dict[int, dict] = {}
     usage = None
     ttft_logged = False
     ttfc_logged = False
@@ -116,27 +141,20 @@ def chat_stream(
             continue
 
         delta = chunk.choices[0].delta
+        has_reasoning = hasattr(delta, "reasoning_details") and delta.reasoning_details
 
         if not ttft_logged:
-            has_any_token = (
-                delta.content
-                or (hasattr(delta, "reasoning_details") and delta.reasoning_details)
-                or delta.tool_calls
-            )
+            has_any_token = delta.content or has_reasoning or delta.tool_calls
             if has_any_token:
                 ttft = time.monotonic() - start
                 get_dev_logger().info("TTFT: %.3fs", ttft)
                 ttft_logged = True
 
-        if (
-            print_output
-            and print_reasoning
-            and not _thinking_shown
-            and hasattr(delta, "reasoning_details")
-            and delta.reasoning_details
-        ):
-            _thinking_shown = True
-            print("[思考中...]", end="", flush=True)
+        if has_reasoning:
+            _accumulate_reasoning_delta(reasoning_acc, delta.reasoning_details)
+            if print_output and print_reasoning and not _thinking_shown:
+                _thinking_shown = True
+                print("[思考中...]", end="", flush=True)
 
         if delta.content:
             if not ttfc_logged:
@@ -163,8 +181,11 @@ def chat_stream(
         print("\r" + " " * 20 + "\r", end="", flush=True)
 
     tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] if tool_calls_acc else []
+    reasoning_details = [reasoning_acc[i] for i in sorted(reasoning_acc)] if reasoning_acc else []
     content = "".join(content_parts)
     message: dict = {"role": "assistant", "content": content or ""}
+    if reasoning_details:
+        message["reasoning_details"] = reasoning_details
     if tool_calls:
         message["tool_calls"] = tool_calls
 
@@ -188,6 +209,9 @@ def chat_raw(
     )
     msg = resp.choices[0].message
     msg_dict: dict = {"role": "assistant", "content": msg.content or ""}
+    rd = getattr(msg, "reasoning_details", None)
+    if rd:
+        msg_dict["reasoning_details"] = rd
     if msg.tool_calls:
         msg_dict["tool_calls"] = [
             {"id": tc.id, "type": tc.type, "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
