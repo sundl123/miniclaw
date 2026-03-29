@@ -2,8 +2,6 @@
 import os
 import re
 
-from miniclaw.config import SKILLS_DIR
-
 
 def parse_frontmatter(content: str) -> dict:
     """从 SKILL.md 内容中解析 YAML frontmatter，返回 name、description 等。"""
@@ -24,9 +22,8 @@ def parse_frontmatter(content: str) -> dict:
     return data
 
 
-def scan_skills_metadata(skills_dir: str = None) -> list[dict]:
+def scan_skills_metadata(skills_dir: str) -> list[dict]:
     """扫描 .skills 目录，返回 [{"name": "...", "description": "..."}, ...]。"""
-    skills_dir = skills_dir or SKILLS_DIR
     result = []
     if not os.path.isdir(skills_dir):
         return result
