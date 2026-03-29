@@ -82,7 +82,7 @@ def main() -> None:
                 client, model, messages, tools,
                 print_reasoning=True, workspace_root=workspace,
             )
-            print("\n")
+            print()
         except openai.APIConnectionError as e:
             print(f"\n[网络错误] {e}\n", file=sys.stderr)
             messages.pop()

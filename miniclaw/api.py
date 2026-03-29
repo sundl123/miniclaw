@@ -84,6 +84,7 @@ def chat_stream(
     model: str = DEFAULT_MODEL,
     *,
     print_output: bool = True,
+    print_reasoning: bool = False,
     **kwargs,
 ) -> tuple[dict, object]:
     """流式调用 MiniMax API，逐 token 输出文本，测量 TTFT，返回 (message_dict, usage)。"""
@@ -103,6 +104,8 @@ def chat_stream(
     tool_calls_acc: dict[int, dict] = {}
     usage = None
     ttft_logged = False
+    _thinking_shown = False
+    _content_started = False
 
     for chunk in stream:
         if chunk.usage:
@@ -113,6 +116,16 @@ def chat_stream(
 
         delta = chunk.choices[0].delta
 
+        if (
+            print_output
+            and print_reasoning
+            and not _thinking_shown
+            and hasattr(delta, "reasoning_details")
+            and delta.reasoning_details
+        ):
+            _thinking_shown = True
+            print("[思考中...]", end="", flush=True)
+
         if delta.content:
             if not ttft_logged:
                 ttft = time.monotonic() - start
@@ -120,11 +133,22 @@ def chat_stream(
                 ttft_logged = True
             content_parts.append(delta.content)
             if print_output:
-                print(delta.content, end="", flush=True)
+                display = delta.content
+                if not _content_started:
+                    display = display.lstrip("\n")
+                    if display:
+                        _content_started = True
+                        if _thinking_shown:
+                            print("\r" + " " * 20 + "\r", end="", flush=True)
+                if display:
+                    print(display, end="", flush=True)
 
         if delta.tool_calls:
             for tc_delta in delta.tool_calls:
                 _accumulate_tool_call_delta(tool_calls_acc, tc_delta)
+
+    if _thinking_shown and not _content_started and print_output:
+        print("\r" + " " * 20 + "\r", end="", flush=True)
 
     tool_calls = [tool_calls_acc[i] for i in sorted(tool_calls_acc)] if tool_calls_acc else []
     content = "".join(content_parts)
@@ -203,6 +227,7 @@ def run_turn_with_tools(
             client, messages, model=model,
             tools=tools, tool_choice="auto",
             print_output=True,
+            print_reasoning=print_reasoning,
             extra_body={"reasoning_split": True},
         )
 
@@ -212,7 +237,7 @@ def run_turn_with_tools(
         if not tool_calls:
             return (message.get("content") or "").strip(), messages
 
-        if message.get("content"):
+        if (message.get("content") or "").strip():
             print()
 
         for tc in tool_calls:
