@@ -32,7 +32,7 @@ python3 chat.py -w /path/to/workspace
 可选环境变量：
 
 - `MINIMAX_API_KEY`（必填）：MiniMax API Key
-- `MINIMAX_MODEL`：模型名，默认 `MiniMax-M2.5`
+- `MINIMAX_MODEL`：模型名，默认 `MiniMax-M2.7`
 - `MINIMAX_SYSTEM`：可选，追加到 system 的额外说明（如人设、规则）
 - `MINICLAW_WORKSPACE`：工作区目录，也可通过 `--workspace` 参数指定（CLI 参数优先）。未指定时默认为项目根目录
 

@@ -12,7 +12,7 @@ DEV_LOG_DIR = os.environ.get("MINICLAW_DEV_LOG_DIR", "").strip() or os.path.join
 
 BASE_URL = "https://api.minimaxi.com"
 OPENAI_BASE_URL = os.environ.get("MINIMAX_OPENAI_BASE_URL", "").strip() or f"{BASE_URL}/v1"
-DEFAULT_MODEL = "MiniMax-M2.5"
+DEFAULT_MODEL = "MiniMax-M2.7"
 
 # MiniMax HTTP 请求超时（秒，含连接与读）。可用 MINIMAX_HTTP_TIMEOUT 覆盖。
 _raw_http_timeout = os.environ.get("MINIMAX_HTTP_TIMEOUT", "").strip()
