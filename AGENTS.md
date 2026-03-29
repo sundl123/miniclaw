@@ -8,7 +8,7 @@
 
 **miniclaw** 是基于 **MiniMax API** 的命令行 LLM 对话工具，核心能力包括：
 
-- **对话**：使用 MiniMax 文本对话 API（`api.minimaxi.com`），支持多轮对话，默认模型 `MiniMax-M2.5`。
+- **对话**：使用 MiniMax 文本对话 API（`api.minimaxi.com`），支持多轮对话，默认模型 `MiniMax-M2.7`。
 - **Tool Call**：模型可调用 `code_execution` 工具，在工作区（项目根）内执行 bash、查看/创建/编辑文件。
 - **.skills 技能目录**：启动时自动扫描项目根下 `.skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `view_file` 读取 `.skills/<name>/SKILL.md` 使用技能。
 
