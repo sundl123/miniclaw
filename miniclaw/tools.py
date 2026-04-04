@@ -28,17 +28,19 @@ def resolve_path(path: str, workspace_root: str = None) -> str:
 READONLY_TOOLS = frozenset({"read", "glob", "grep", "enter_plan_mode", "exit_plan_mode"})
 
 
-def _is_plan_file_write(name: str, args: dict, context: dict) -> bool:
-    """检查是否是对 plan 文件的写操作（plan mode 下唯一豁免的写入）。"""
+def _is_plan_dir_write(name: str, args: dict, context: dict) -> bool:
+    """检查写操作目标是否在 plan 目录内（plan mode 下豁免的写入范围）。"""
     if name not in ("write", "edit"):
         return False
-    plan_file = context.get("plan_file", "")
+    plan_dir = context.get("plan_dir", "")
     target_path = args.get("path", "")
-    if not plan_file or not target_path:
+    if not plan_dir or not target_path:
         return False
     root = context.get("workspace_root") or WORKSPACE_ROOT
     abs_target = resolve_path(target_path, root)
-    return os.path.normpath(abs_target) == os.path.normpath(plan_file)
+    abs_plan_dir = os.path.normpath(plan_dir)
+    return os.path.normpath(abs_target).startswith(abs_plan_dir + os.sep) or \
+           os.path.normpath(abs_target) == abs_plan_dir
 
 
 def _check_plan_mode(name: str, args: dict, context: dict):
@@ -47,12 +49,12 @@ def _check_plan_mode(name: str, args: dict, context: dict):
         return None
     if name in READONLY_TOOLS:
         return None
-    if _is_plan_file_write(name, args, context):
+    if _is_plan_dir_write(name, args, context):
         return None
-    plan_file = context.get("plan_file", "")
+    plan_dir = context.get("plan_dir", "")
     return json.dumps({
         "error": "当前处于 Plan Mode（规划模式），不允许执行写操作。"
-                 f"唯一例外是 plan 文件：{plan_file}。"
+                 f"唯一例外是 plan 目录：{plan_dir}/ 下的文件。"
                  "请先完成规划，然后调用 exit_plan_mode 退出规划模式。"
     }, ensure_ascii=False)
 
@@ -66,7 +68,7 @@ def handle_enter_plan_mode(args: dict, workspace_root: str, context: dict) -> st
         }, ensure_ascii=False)
 
     context["mode"] = "plan"
-    plan_file = context.get("plan_file", ".miniclaw/plan.md")
+    plan_dir = context.get("plan_dir", ".miniclaw/plans")
     return (
         "已进入 Plan Mode（规划模式）。\n"
         "\n"
@@ -75,16 +77,16 @@ def handle_enter_plan_mode(args: dict, workspace_root: str, context: dict) -> st
         "## 规则\n"
         "- 可以使用 read、glob、grep 来探索代码库\n"
         "- 不要使用 write、edit、bash 等修改操作（会被拒绝）\n"
-        f"- 唯一例外：可以使用 write 工具将计划写入 {plan_file}\n"
+        f"- 唯一例外：可以使用 write/edit 工具在 {plan_dir}/ 目录下创建和编辑 plan 文件\n"
         "\n"
         "## 工作流程\n"
         "1. 使用只读工具探索代码库，理解现有结构\n"
-        f"2. 将实现计划写入 {plan_file}，格式要求如下：\n"
+        f"2. 在 {plan_dir}/ 目录下创建 plan 文件（文件名自定，如 refactor-api.md），格式要求如下：\n"
         "   - 包含 Context（背景）、Steps（实施步骤）、Verification（验证方式）三个部分\n"
         "   - Steps 部分必须使用 todo list 格式（- [ ] 未完成 / - [x] 已完成）\n"
         "3. 准备好执行时，调用 exit_plan_mode 退出规划模式\n"
         "\n"
-        "## plan.md 格式示例\n"
+        "## plan 文件格式示例\n"
         "```\n"
         "# Plan: [标题]\n"
         "## Context\n"
@@ -107,15 +109,15 @@ def handle_exit_plan_mode(args: dict, workspace_root: str, context: dict) -> str
         }, ensure_ascii=False)
 
     context["mode"] = "agent"
-    plan_file = context.get("plan_file", ".miniclaw/plan.md")
+    plan_dir = context.get("plan_dir", ".miniclaw/plans")
     return (
         "已退出 Plan Mode，进入执行模式。\n"
         "你现在可以使用所有工具来实施计划。\n"
         "\n"
         "重要：请遵循以下执行规范：\n"
-        f"1. 先用 read 工具读取 {plan_file} 确认计划内容\n"
+        f"1. 先用 read 工具读取 {plan_dir}/ 下的 plan 文件确认计划内容\n"
         "2. 按照 Steps 中的 todo list 逐项执行\n"
-        f"3. 每完成一个步骤后，用 edit 工具更新 {plan_file}，将对应的 - [ ] 改为 - [x]\n"
+        "3. 每完成一个步骤后，用 edit 工具更新对应的 plan 文件，将对应的 - [ ] 改为 - [x]\n"
         "4. 所有步骤完成后，执行 Verification 部分描述的验证操作"
     )
 
@@ -273,7 +275,7 @@ def execute_tool(name: str, args: dict, workspace_root: str = None,
                  context: dict = None) -> str:
     """按工具名分发执行，返回结果字符串。
 
-    context 承载 plan mode 状态（mode, plan_file 等），由 REPL 层创建并透传。
+    context 承载 plan mode 状态（mode, plan_dir 等），由 REPL 层创建并透传。
     """
     root = workspace_root or WORKSPACE_ROOT
     ctx = context or {}
@@ -362,7 +364,7 @@ def get_tool_schemas() -> list[dict]:
             "name": "enter_plan_mode",
             "description": (
                 "Enter plan mode for read-only exploration and planning. "
-                "In plan mode, only read tools and writing to the plan file are allowed. "
+                "In plan mode, only read tools and writing to the plans directory are allowed. "
                 "Use this before making changes to explore the codebase and create a plan."
             ),
             "parameters": {"type": "object", "properties": {}},

@@ -56,8 +56,8 @@ def _repl_loop(session: dict) -> None:
     tools = session["tools"]
     messages = [{"role": "system", "content": system_prompt}]
 
-    plan_file = os.path.join(workspace, ".miniclaw", "plan.md")
-    context = {"mode": "agent", "plan_file": plan_file, "workspace_root": workspace}
+    plan_dir = os.path.join(workspace, ".miniclaw", "plans")
+    context = {"mode": "agent", "plan_dir": plan_dir, "workspace_root": workspace}
 
     print(f"工作区: {workspace}")
     print("MiniMax 命令行对话 + Code Execution + .skills "

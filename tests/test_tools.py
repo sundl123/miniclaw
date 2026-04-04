@@ -16,7 +16,7 @@ from miniclaw.tools import (
     get_tool_schemas,
     handle_enter_plan_mode,
     handle_exit_plan_mode,
-    _is_plan_file_write,
+    _is_plan_dir_write,
     _check_plan_mode,
 )
 
@@ -220,15 +220,15 @@ class TestGetToolSchemas(unittest.TestCase):
 class TestEnterPlanMode(unittest.TestCase):
     def test_enter_from_agent(self):
         with tempfile.TemporaryDirectory() as root:
-            ctx = {"mode": "agent", "plan_file": os.path.join(root, ".miniclaw", "plan.md")}
+            ctx = {"mode": "agent", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
             result = handle_enter_plan_mode({}, root, ctx)
             self.assertEqual(ctx["mode"], "plan")
             self.assertIn("Plan Mode", result)
-            self.assertIn("plan.md", result)
+            self.assertIn("plans", result)
 
     def test_nested_enter_rejected(self):
         with tempfile.TemporaryDirectory() as root:
-            ctx = {"mode": "plan", "plan_file": os.path.join(root, ".miniclaw", "plan.md")}
+            ctx = {"mode": "plan", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
             result = handle_enter_plan_mode({}, root, ctx)
             self.assertEqual(ctx["mode"], "plan")
             data = json.loads(result)
@@ -239,7 +239,7 @@ class TestEnterPlanMode(unittest.TestCase):
 class TestExitPlanMode(unittest.TestCase):
     def test_exit_from_plan(self):
         with tempfile.TemporaryDirectory() as root:
-            ctx = {"mode": "plan", "plan_file": os.path.join(root, ".miniclaw", "plan.md")}
+            ctx = {"mode": "plan", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
             result = handle_exit_plan_mode({}, root, ctx)
             self.assertEqual(ctx["mode"], "agent")
             self.assertIn("执行模式", result)
@@ -247,44 +247,56 @@ class TestExitPlanMode(unittest.TestCase):
 
     def test_exit_from_agent_rejected(self):
         with tempfile.TemporaryDirectory() as root:
-            ctx = {"mode": "agent", "plan_file": os.path.join(root, ".miniclaw", "plan.md")}
+            ctx = {"mode": "agent", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
             result = handle_exit_plan_mode({}, root, ctx)
             self.assertEqual(ctx["mode"], "agent")
             data = json.loads(result)
             self.assertIn("error", data)
 
 
-class TestIsPlanFileWrite(unittest.TestCase):
-    def test_write_to_plan_file(self):
+class TestIsPlanDirWrite(unittest.TestCase):
+    def test_write_to_plan_dir(self):
         with tempfile.TemporaryDirectory() as root:
-            plan = os.path.join(root, ".miniclaw", "plan.md")
-            ctx = {"plan_file": plan, "workspace_root": root}
-            self.assertTrue(_is_plan_file_write("write", {"path": ".miniclaw/plan.md"}, ctx))
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertTrue(_is_plan_dir_write("write", {"path": ".miniclaw/plans/refactor.md"}, ctx))
+
+    def test_write_to_plan_dir_nested(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertTrue(_is_plan_dir_write("write", {"path": ".miniclaw/plans/v2/design.md"}, ctx))
 
     def test_write_to_other_file(self):
         with tempfile.TemporaryDirectory() as root:
-            plan = os.path.join(root, ".miniclaw", "plan.md")
-            ctx = {"plan_file": plan, "workspace_root": root}
-            self.assertFalse(_is_plan_file_write("write", {"path": "src/main.py"}, ctx))
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertFalse(_is_plan_dir_write("write", {"path": "src/main.py"}, ctx))
 
-    def test_edit_to_plan_file(self):
+    def test_write_to_miniclaw_but_not_plans(self):
         with tempfile.TemporaryDirectory() as root:
-            plan = os.path.join(root, ".miniclaw", "plan.md")
-            ctx = {"plan_file": plan, "workspace_root": root}
-            self.assertTrue(_is_plan_file_write("edit", {"path": ".miniclaw/plan.md"}, ctx))
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertFalse(_is_plan_dir_write("write", {"path": ".miniclaw/config.json"}, ctx))
 
-    def test_bash_not_plan_file(self):
+    def test_edit_in_plan_dir(self):
         with tempfile.TemporaryDirectory() as root:
-            plan = os.path.join(root, ".miniclaw", "plan.md")
-            ctx = {"plan_file": plan, "workspace_root": root}
-            self.assertFalse(_is_plan_file_write("bash", {"command": "echo hi"}, ctx))
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertTrue(_is_plan_dir_write("edit", {"path": ".miniclaw/plans/my-plan.md"}, ctx))
+
+    def test_bash_not_plan_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertFalse(_is_plan_dir_write("bash", {"command": "echo hi"}, ctx))
 
 
 class TestCheckPlanMode(unittest.TestCase):
     def _make_ctx(self, root, mode="plan"):
         return {
             "mode": mode,
-            "plan_file": os.path.join(root, ".miniclaw", "plan.md"),
+            "plan_dir": os.path.join(root, ".miniclaw", "plans"),
             "workspace_root": root,
         }
 
@@ -300,11 +312,21 @@ class TestCheckPlanMode(unittest.TestCase):
             for tool in ("read", "glob", "grep", "enter_plan_mode", "exit_plan_mode"):
                 self.assertIsNone(_check_plan_mode(tool, {}, ctx))
 
-    def test_plan_mode_allows_plan_file_write(self):
+    def test_plan_mode_allows_plan_dir_write(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
             self.assertIsNone(
-                _check_plan_mode("write", {"path": ".miniclaw/plan.md"}, ctx)
+                _check_plan_mode("write", {"path": ".miniclaw/plans/my-plan.md"}, ctx)
+            )
+
+    def test_plan_mode_allows_any_file_in_plan_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = self._make_ctx(root)
+            self.assertIsNone(
+                _check_plan_mode("write", {"path": ".miniclaw/plans/feature-x.md"}, ctx)
+            )
+            self.assertIsNone(
+                _check_plan_mode("edit", {"path": ".miniclaw/plans/bugfix.md"}, ctx)
             )
 
     def test_plan_mode_blocks_other_write(self):
@@ -334,7 +356,7 @@ class TestExecuteToolPlanMode(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             ctx = {
                 "mode": "plan",
-                "plan_file": os.path.join(root, ".miniclaw", "plan.md"),
+                "plan_dir": os.path.join(root, ".miniclaw", "plans"),
                 "workspace_root": root,
             }
             result = execute_tool("write", {"path": "x.py", "content": "hi"}, root, context=ctx)
@@ -349,32 +371,47 @@ class TestExecuteToolPlanMode(unittest.TestCase):
                 f.write("hello\n")
             ctx = {
                 "mode": "plan",
-                "plan_file": os.path.join(root, ".miniclaw", "plan.md"),
+                "plan_dir": os.path.join(root, ".miniclaw", "plans"),
                 "workspace_root": root,
             }
             result = execute_tool("read", {"path": "f.txt"}, root, context=ctx)
             self.assertIn("hello", result)
 
-    def test_execute_tool_plan_mode_allows_plan_file_write(self):
+    def test_execute_tool_plan_mode_allows_plan_dir_write(self):
         with tempfile.TemporaryDirectory() as root:
-            plan_dir = os.path.join(root, ".miniclaw")
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
             os.makedirs(plan_dir)
-            plan_file = os.path.join(plan_dir, "plan.md")
             ctx = {
                 "mode": "plan",
-                "plan_file": plan_file,
+                "plan_dir": plan_dir,
                 "workspace_root": root,
             }
-            result = execute_tool("write", {"path": ".miniclaw/plan.md", "content": "# Plan"}, root, context=ctx)
+            result = execute_tool("write", {"path": ".miniclaw/plans/my-plan.md", "content": "# Plan"}, root, context=ctx)
             self.assertIn("Successfully", result)
-            with open(plan_file) as f:
+            with open(os.path.join(plan_dir, "my-plan.md")) as f:
                 self.assertEqual(f.read(), "# Plan")
+
+    def test_execute_tool_plan_mode_allows_multiple_plan_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            os.makedirs(plan_dir)
+            ctx = {
+                "mode": "plan",
+                "plan_dir": plan_dir,
+                "workspace_root": root,
+            }
+            r1 = execute_tool("write", {"path": ".miniclaw/plans/step1.md", "content": "# Step 1"}, root, context=ctx)
+            r2 = execute_tool("write", {"path": ".miniclaw/plans/step2.md", "content": "# Step 2"}, root, context=ctx)
+            self.assertIn("Successfully", r1)
+            self.assertIn("Successfully", r2)
+            self.assertTrue(os.path.isfile(os.path.join(plan_dir, "step1.md")))
+            self.assertTrue(os.path.isfile(os.path.join(plan_dir, "step2.md")))
 
     def test_execute_tool_enter_exit_roundtrip(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = {
                 "mode": "agent",
-                "plan_file": os.path.join(root, ".miniclaw", "plan.md"),
+                "plan_dir": os.path.join(root, ".miniclaw", "plans"),
                 "workspace_root": root,
             }
             result = execute_tool("enter_plan_mode", {}, root, context=ctx)
@@ -389,7 +426,7 @@ class TestExecuteToolPlanMode(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             ctx = {
                 "mode": "plan",
-                "plan_file": os.path.join(root, ".miniclaw", "plan.md"),
+                "plan_dir": os.path.join(root, ".miniclaw", "plans"),
                 "workspace_root": root,
             }
             result = execute_tool("enter_plan_mode", {}, root, context=ctx)
