@@ -102,23 +102,39 @@ def handle_enter_plan_mode(args: dict, workspace_root: str, context: dict) -> st
 
 
 def handle_exit_plan_mode(args: dict, workspace_root: str, context: dict) -> str:
-    """退出 plan mode：设置 mode='agent'，返回执行阶段指令。"""
+    """退出 plan mode：需用户审批通过后才切换到 agent mode。
+
+    用户输入 y/yes/空回车 → 批准，切换 mode；其他输入视为修改意见，
+    mode 保持 plan，反馈通过 tool result 回传给模型继续优化。
+    """
     if context.get("mode") != "plan":
         return json.dumps({
             "error": "当前不在规划模式中，无需退出。"
         }, ensure_ascii=False)
 
-    context["mode"] = "agent"
     plan_dir = context.get("plan_dir", ".miniclaw/plans")
+
+    print(f"\n[Plan Mode] 模型已完成规划，plan 文件位于 {plan_dir}/")
+    print("请审阅后输入 y 批准执行，或输入修改意见继续优化：")
+    response = input("审阅: ").strip()
+
+    if response.lower() in ("y", "yes", ""):
+        context["mode"] = "agent"
+        return (
+            "用户已批准计划，进入执行模式。\n"
+            "你现在可以使用所有工具来实施计划。\n"
+            "\n"
+            "重要：请遵循以下执行规范：\n"
+            f"1. 先用 read 工具读取 {plan_dir}/ 下的 plan 文件确认计划内容\n"
+            "2. 按照 Steps 中的 todo list 逐项执行\n"
+            "3. 每完成一个步骤后，用 edit 工具更新对应的 plan 文件，将对应的 - [ ] 改为 - [x]\n"
+            "4. 所有步骤完成后，执行 Verification 部分描述的验证操作"
+        )
+
     return (
-        "已退出 Plan Mode，进入执行模式。\n"
-        "你现在可以使用所有工具来实施计划。\n"
-        "\n"
-        "重要：请遵循以下执行规范：\n"
-        f"1. 先用 read 工具读取 {plan_dir}/ 下的 plan 文件确认计划内容\n"
-        "2. 按照 Steps 中的 todo list 逐项执行\n"
-        "3. 每完成一个步骤后，用 edit 工具更新对应的 plan 文件，将对应的 - [ ] 改为 - [x]\n"
-        "4. 所有步骤完成后，执行 Verification 部分描述的验证操作"
+        "用户未批准计划，仍处于 Plan Mode。\n"
+        f"用户反馈：{response}\n"
+        "请根据反馈修改 plan 文件，完成后再次调用 exit_plan_mode。"
     )
 
 

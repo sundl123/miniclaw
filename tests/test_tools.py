@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from miniclaw.tools import (
     resolve_path,
@@ -237,13 +238,31 @@ class TestEnterPlanMode(unittest.TestCase):
 
 
 class TestExitPlanMode(unittest.TestCase):
-    def test_exit_from_plan(self):
+    def test_exit_approved_with_y(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = {"mode": "plan", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
-            result = handle_exit_plan_mode({}, root, ctx)
+            with patch("builtins.input", return_value="y"):
+                result = handle_exit_plan_mode({}, root, ctx)
             self.assertEqual(ctx["mode"], "agent")
-            self.assertIn("执行模式", result)
+            self.assertIn("批准", result)
             self.assertIn("- [ ]", result)
+
+    def test_exit_approved_with_empty(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = {"mode": "plan", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
+            with patch("builtins.input", return_value=""):
+                result = handle_exit_plan_mode({}, root, ctx)
+            self.assertEqual(ctx["mode"], "agent")
+            self.assertIn("批准", result)
+
+    def test_exit_rejected_with_feedback(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = {"mode": "plan", "plan_dir": os.path.join(root, ".miniclaw", "plans")}
+            with patch("builtins.input", return_value="step 3 需要细化"):
+                result = handle_exit_plan_mode({}, root, ctx)
+            self.assertEqual(ctx["mode"], "plan")
+            self.assertIn("未批准", result)
+            self.assertIn("step 3 需要细化", result)
 
     def test_exit_from_agent_rejected(self):
         with tempfile.TemporaryDirectory() as root:
@@ -418,9 +437,23 @@ class TestExecuteToolPlanMode(unittest.TestCase):
             self.assertEqual(ctx["mode"], "plan")
             self.assertIn("Plan Mode", result)
 
-            result = execute_tool("exit_plan_mode", {}, root, context=ctx)
+            with patch("builtins.input", return_value="y"):
+                result = execute_tool("exit_plan_mode", {}, root, context=ctx)
             self.assertEqual(ctx["mode"], "agent")
-            self.assertIn("执行模式", result)
+            self.assertIn("批准", result)
+
+    def test_execute_tool_exit_rejected_stays_in_plan(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = {
+                "mode": "plan",
+                "plan_dir": os.path.join(root, ".miniclaw", "plans"),
+                "workspace_root": root,
+            }
+            with patch("builtins.input", return_value="请补充错误处理"):
+                result = execute_tool("exit_plan_mode", {}, root, context=ctx)
+            self.assertEqual(ctx["mode"], "plan")
+            self.assertIn("未批准", result)
+            self.assertIn("请补充错误处理", result)
 
     def test_execute_tool_nested_enter_rejected(self):
         with tempfile.TemporaryDirectory() as root:
