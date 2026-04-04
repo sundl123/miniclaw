@@ -35,7 +35,7 @@ class TestExecuteToolCall(unittest.TestCase):
             m.return_value = "hi"
             out = _execute_tool_call(tc)
         self.assertEqual(out, "hi")
-        m.assert_called_once_with("bash", {"command": "echo hi"}, workspace_root=None)
+        m.assert_called_once_with("bash", {"command": "echo hi"}, workspace_root=None, context=None)
 
     def test_tool_call_with_workspace_root(self):
         tc = {
@@ -44,7 +44,7 @@ class TestExecuteToolCall(unittest.TestCase):
         with patch("miniclaw.api.execute_tool") as m:
             m.return_value = "content"
             _execute_tool_call(tc, workspace_root="/tmp/workspace")
-        m.assert_called_once_with("read", {"path": "f.txt"}, workspace_root="/tmp/workspace")
+        m.assert_called_once_with("read", {"path": "f.txt"}, workspace_root="/tmp/workspace", context=None)
 
     def test_unknown_tool(self):
         tc = {"function": {"name": "unknown_tool", "arguments": "{}"}}

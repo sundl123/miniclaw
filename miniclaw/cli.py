@@ -56,6 +56,9 @@ def _repl_loop(session: dict) -> None:
     tools = session["tools"]
     messages = [{"role": "system", "content": system_prompt}]
 
+    plan_file = os.path.join(workspace, ".miniclaw", "plan.md")
+    context = {"mode": "agent", "plan_file": plan_file, "workspace_root": workspace}
+
     print(f"工作区: {workspace}")
     print("MiniMax 命令行对话 + Code Execution + .skills "
           "(输入 /quit 退出, /clear 清空历史, /model 查看当前模型)")
@@ -63,7 +66,8 @@ def _repl_loop(session: dict) -> None:
 
     while True:
         try:
-            user_input = input("你: ").strip()
+            mode_label = " [plan]" if context["mode"] == "plan" else ""
+            user_input = input(f"你{mode_label}: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再见。")
             break
@@ -75,6 +79,7 @@ def _repl_loop(session: dict) -> None:
             break
         if user_input == "/clear":
             messages = [{"role": "system", "content": system_prompt}]
+            context["mode"] = "agent"
             print("[已清空对话历史]")
             continue
         if user_input == "/model":
@@ -87,6 +92,7 @@ def _repl_loop(session: dict) -> None:
             reply, messages = run_turn_with_tools(
                 client, model, messages, tools,
                 print_reasoning=True, workspace_root=workspace,
+                context=context,
             )
             print()
         except (openai.APIError, RuntimeError) as e:
