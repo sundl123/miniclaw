@@ -10,6 +10,7 @@ from miniclaw.api import create_client, get_api_key, run_turn_with_tools
 from miniclaw.config import DEFAULT_MODEL, WORKSPACE_ROOT
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
+from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
 
 
@@ -56,14 +57,18 @@ def _repl_loop(session: dict) -> None:
     tools = session["tools"]
     messages = [{"role": "system", "content": system_prompt}]
 
+    plan_dir = os.path.join(workspace, ".miniclaw", "plans")
+    context = {"mode": "agent", "plan_dir": plan_dir, "workspace_root": workspace}
+
     print(f"工作区: {workspace}")
     print("MiniMax 命令行对话 + Code Execution + .skills "
-          "(输入 /quit 退出, /clear 清空历史, /model 查看当前模型)")
+          "(输入 /quit 退出, /clear 清空历史, /model 查看模型, /plan 进入规划模式)")
     print("-" * 50)
 
     while True:
         try:
-            user_input = input("你: ").strip()
+            mode_label = " [plan]" if context["mode"] == "plan" else ""
+            user_input = input(f"你{mode_label}: ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再见。")
             break
@@ -75,10 +80,37 @@ def _repl_loop(session: dict) -> None:
             break
         if user_input == "/clear":
             messages = [{"role": "system", "content": system_prompt}]
+            context["mode"] = "agent"
             print("[已清空对话历史]")
             continue
         if user_input == "/model":
             print(f"当前模型: {model}")
+            continue
+        if user_input == "/plan" or user_input.startswith("/plan "):
+            if context["mode"] == "plan":
+                print("[已在 Plan Mode 中]")
+                continue
+            context["mode"] = "plan"
+            instructions = get_plan_mode_instructions(plan_dir)
+            print(f"[已进入 Plan Mode，plan 目录: {plan_dir}/]")
+            description = user_input[5:].strip()
+            if description:
+                messages.append({
+                    "role": "user",
+                    "content": f"{instructions}\n\n用户需求：{description}",
+                })
+                try:
+                    reply, messages = run_turn_with_tools(
+                        client, model, messages, tools,
+                        print_reasoning=True, workspace_root=workspace,
+                        context=context,
+                    )
+                    print()
+                except (openai.APIError, RuntimeError) as e:
+                    label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
+                            "API 错误" if isinstance(e, openai.APIError) else "错误"
+                    print(f"\n[{label}] {e}\n", file=sys.stderr)
+                    messages.pop()
             continue
 
         messages.append({"role": "user", "content": user_input})
@@ -87,6 +119,7 @@ def _repl_loop(session: dict) -> None:
             reply, messages = run_turn_with_tools(
                 client, model, messages, tools,
                 print_reasoning=True, workspace_root=workspace,
+                context=context,
             )
             print()
         except (openai.APIError, RuntimeError) as e:

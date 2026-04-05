@@ -278,7 +278,8 @@ def chat(client: OpenAI, messages: list[dict], model: str = DEFAULT_MODEL, **kwa
 # Tool 执行
 # ---------------------------------------------------------------------------
 
-def _execute_tool_call(tc: dict, *, workspace_root: str = None) -> str:
+def _execute_tool_call(tc: dict, *, workspace_root: str = None,
+                       context: dict = None) -> str:
     """解析单条 tool_call 并执行，返回结果字符串。"""
     fn = tc.get("function") or {}
     name = fn.get("name", "")
@@ -287,7 +288,7 @@ def _execute_tool_call(tc: dict, *, workspace_root: str = None) -> str:
         args = json.loads(args_str) if isinstance(args_str, str) else args_str
     except json.JSONDecodeError:
         args = {}
-    return execute_tool(name, args, workspace_root=workspace_root)
+    return execute_tool(name, args, workspace_root=workspace_root, context=context)
 
 
 # ---------------------------------------------------------------------------
@@ -302,8 +303,12 @@ def run_turn_with_tools(
     *,
     print_reasoning: bool = True,
     workspace_root: str = None,
+    context: dict = None,
 ) -> tuple[str, list[dict]]:
-    """带 tool 的对话循环：流式请求 → 若有 tool_calls 则执行并追加消息 → 再请求，直到无 tool_calls。"""
+    """带 tool 的对话循环：流式请求 → 若有 tool_calls 则执行并追加消息 → 再请求，直到无 tool_calls。
+
+    context 承载 plan mode 状态，由 REPL 层创建并透传给 execute_tool。
+    """
     while True:
         message, _ = chat_stream(
             client, messages, model=model,
@@ -324,5 +329,6 @@ def run_turn_with_tools(
 
         for tc in tool_calls:
             tid = tc.get("id") or tc.get("tool_use_id")
-            result = _execute_tool_call(tc, workspace_root=workspace_root)
+            result = _execute_tool_call(tc, workspace_root=workspace_root,
+                                        context=context)
             messages.append({"role": "tool", "tool_call_id": tid, "content": result})

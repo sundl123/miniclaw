@@ -4,21 +4,12 @@ import json
 import os
 import subprocess
 
-from miniclaw.config import WORKSPACE_ROOT
-
-
-# ---------------------------------------------------------------------------
-# 路径安全
-# ---------------------------------------------------------------------------
-
-def resolve_path(path: str, workspace_root: str = None) -> str:
-    """将相对 path 解析为工作区内的绝对路径，禁止 .. 逃逸。"""
-    root = workspace_root or WORKSPACE_ROOT
-    path = path.lstrip("/")
-    abs_path = os.path.normpath(os.path.join(root, path))
-    if not abs_path.startswith(root):
-        raise PermissionError(f"路径不允许超出工作区: {path}")
-    return abs_path
+from miniclaw.config import WORKSPACE_ROOT, resolve_path
+from miniclaw.plan_mode import (
+    PLAN_MODE_HANDLERS,
+    check_plan_mode,
+    get_plan_tool_schemas,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -131,7 +122,7 @@ def handle_bash(args: dict, workspace_root: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 工具注册表与 Schema
+# 工具注册表与分发
 # ---------------------------------------------------------------------------
 
 TOOL_HANDLERS = {
@@ -159,12 +150,33 @@ def _print_tool_invocation(name: str, args: dict) -> None:
         detail = f" pattern={args.get('pattern', '')}"
     elif name == "grep":
         detail = f" pattern={args.get('pattern', '')} path={args.get('path', '.')}"
+    elif name in PLAN_MODE_HANDLERS:
+        pass
     print(f"[调用工具] {name}{detail}", flush=True)
 
 
-def execute_tool(name: str, args: dict, workspace_root: str = None) -> str:
-    """按工具名分发执行，返回结果字符串。"""
+def execute_tool(name: str, args: dict, workspace_root: str = None,
+                 context: dict = None) -> str:
+    """按工具名分发执行，返回结果字符串。
+
+    context 承载 plan mode 状态（mode, plan_dir 等），由 REPL 层创建并透传。
+    """
     root = workspace_root or WORKSPACE_ROOT
+    ctx = context or {}
+
+    blocked = check_plan_mode(name, args, ctx)
+    if blocked:
+        _print_tool_invocation(name, args)
+        return blocked
+
+    plan_handler = PLAN_MODE_HANDLERS.get(name)
+    if plan_handler:
+        _print_tool_invocation(name, args)
+        try:
+            return plan_handler(args, root, ctx)
+        except Exception as e:
+            return json.dumps({"error": str(e)}, ensure_ascii=False)
+
     handler = TOOL_HANDLERS.get(name)
     if not handler:
         return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
@@ -179,8 +191,12 @@ def execute_tool(name: str, args: dict, workspace_root: str = None) -> str:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
 
+# ---------------------------------------------------------------------------
+# Tool Schema
+# ---------------------------------------------------------------------------
+
 def get_tool_schemas() -> list[dict]:
-    """返回所有工具的 OpenAI function-calling 风格定义。"""
+    """返回所有工具的 OpenAI function-calling 风格定义（含 plan mode 工具）。"""
     return [
         {"type": "function", "function": {
             "name": "read",
@@ -230,4 +246,4 @@ def get_tool_schemas() -> list[dict]:
                 "command": {"type": "string", "description": "The bash command to execute"},
             }, "required": ["command"]},
         }},
-    ]
+    ] + get_plan_tool_schemas()
