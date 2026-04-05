@@ -47,16 +47,11 @@ def check_plan_mode(name: str, args: dict, context: dict):
 # Tool handlers
 # ---------------------------------------------------------------------------
 
-def handle_enter_plan_mode(args: dict, workspace_root: str, context: dict) -> str:
-    """进入 plan mode：设置 mode='plan'，返回规划阶段指令。"""
-    if context.get("mode") == "plan":
-        return json.dumps({
-            "error": "已在规划模式中，不允许嵌套进入。"
-                     "请先调用 exit_plan_mode 退出后再重新进入。"
-        }, ensure_ascii=False)
+def get_plan_mode_instructions(plan_dir: str) -> str:
+    """返回进入 plan mode 时注入给模型的指令文本。
 
-    context["mode"] = "plan"
-    plan_dir = context.get("plan_dir", ".miniclaw/plans")
+    供 handle_enter_plan_mode（tool call 触发）和 /plan 命令（用户手动触发）共用。
+    """
     return (
         "已进入 Plan Mode（规划模式）。\n"
         "\n"
@@ -87,6 +82,18 @@ def handle_enter_plan_mode(args: dict, workspace_root: str, context: dict) -> st
         "[如何验证变更是正确的]\n"
         "```"
     )
+
+
+def handle_enter_plan_mode(args: dict, workspace_root: str, context: dict) -> str:
+    """进入 plan mode：设置 mode='plan'，返回规划阶段指令。"""
+    if context.get("mode") == "plan":
+        return json.dumps({
+            "error": "已在规划模式中，不允许嵌套进入。"
+                     "请先调用 exit_plan_mode 退出后再重新进入。"
+        }, ensure_ascii=False)
+
+    context["mode"] = "plan"
+    return get_plan_mode_instructions(context.get("plan_dir", ".miniclaw/plans"))
 
 
 def handle_exit_plan_mode(args: dict, workspace_root: str, context: dict) -> str:
