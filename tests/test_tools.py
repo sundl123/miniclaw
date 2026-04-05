@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from miniclaw.config import resolve_path
 from miniclaw.tools import (
-    resolve_path,
     handle_read,
     handle_write,
     handle_edit,
@@ -15,10 +15,12 @@ from miniclaw.tools import (
     handle_bash,
     execute_tool,
     get_tool_schemas,
+)
+from miniclaw.plan_mode import (
     handle_enter_plan_mode,
     handle_exit_plan_mode,
     _is_plan_dir_write,
-    _check_plan_mode,
+    check_plan_mode,
 )
 
 
@@ -322,36 +324,36 @@ class TestCheckPlanMode(unittest.TestCase):
     def test_agent_mode_allows_everything(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root, "agent")
-            self.assertIsNone(_check_plan_mode("write", {"path": "x.py"}, ctx))
-            self.assertIsNone(_check_plan_mode("bash", {"command": "rm -rf /"}, ctx))
+            self.assertIsNone(check_plan_mode("write", {"path": "x.py"}, ctx))
+            self.assertIsNone(check_plan_mode("bash", {"command": "rm -rf /"}, ctx))
 
     def test_plan_mode_allows_readonly(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
             for tool in ("read", "glob", "grep", "enter_plan_mode", "exit_plan_mode"):
-                self.assertIsNone(_check_plan_mode(tool, {}, ctx))
+                self.assertIsNone(check_plan_mode(tool, {}, ctx))
 
     def test_plan_mode_allows_plan_dir_write(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
             self.assertIsNone(
-                _check_plan_mode("write", {"path": ".miniclaw/plans/my-plan.md"}, ctx)
+                check_plan_mode("write", {"path": ".miniclaw/plans/my-plan.md"}, ctx)
             )
 
     def test_plan_mode_allows_any_file_in_plan_dir(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
             self.assertIsNone(
-                _check_plan_mode("write", {"path": ".miniclaw/plans/feature-x.md"}, ctx)
+                check_plan_mode("write", {"path": ".miniclaw/plans/feature-x.md"}, ctx)
             )
             self.assertIsNone(
-                _check_plan_mode("edit", {"path": ".miniclaw/plans/bugfix.md"}, ctx)
+                check_plan_mode("edit", {"path": ".miniclaw/plans/bugfix.md"}, ctx)
             )
 
     def test_plan_mode_blocks_other_write(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
-            result = _check_plan_mode("write", {"path": "src/main.py"}, ctx)
+            result = check_plan_mode("write", {"path": "src/main.py"}, ctx)
             self.assertIsNotNone(result)
             data = json.loads(result)
             self.assertIn("error", data)
@@ -360,13 +362,13 @@ class TestCheckPlanMode(unittest.TestCase):
     def test_plan_mode_blocks_bash(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
-            result = _check_plan_mode("bash", {"command": "echo hi"}, ctx)
+            result = check_plan_mode("bash", {"command": "echo hi"}, ctx)
             self.assertIsNotNone(result)
 
     def test_plan_mode_blocks_edit_non_plan(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
-            result = _check_plan_mode("edit", {"path": "foo.py", "old_string": "a", "new_string": "b"}, ctx)
+            result = check_plan_mode("edit", {"path": "foo.py", "old_string": "a", "new_string": "b"}, ctx)
             self.assertIsNotNone(result)
 
 
