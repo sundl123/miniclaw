@@ -153,7 +153,7 @@ _repl_loop (cli.py)
 run_turn_with_tools (api.py)  ← 透传 context
   │
   ▼
-MiniMax API (LLM)
+LLM API
   │  返回 tool_calls
   ▼
 execute_tool (tools.py)  ← 透传 context

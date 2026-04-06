@@ -1,17 +1,17 @@
 # miniclaw
 
-基于 MiniMax API 的小工具与命令行对话，支持 **code-execution** 工具与 **.skills** 技能目录。
+命令行 LLM 对话工具（harness 框架），支持 **code-execution** 工具与 **.skills** 技能目录。底层模型可替换，当前默认接入 MiniMax API。
 
 ## 命令行 LLM 对话 (chat.py)
 
-使用 MiniMax 文本对话 API 的交互式聊天，具备：
+基于 OpenAI 兼容接口的交互式聊天，具备：
 
 - **Tool Call**：模型可调用 `code_execution` 工具（执行 bash、查看/创建/编辑工作区文件）。
 - **.skills**：启动时自动扫描项目根下 `.skills` 目录，将各技能的 name/description 注入 system prompt，模型按需通过 `view_file` 读取 `.skills/<name>/SKILL.md` 使用技能。
 
 ### 准备
 
-1. 在 [MiniMax 开放平台](https://platform.minimaxi.com) 注册并创建 API Key。
+1. 准备一个 OpenAI 兼容的 API Key（默认使用 [MiniMax 开放平台](https://platform.minimaxi.com)）。
 2. 安装依赖：`pip install -r requirements.txt`
 
 ### 使用
@@ -31,8 +31,9 @@ python3 chat.py -w /path/to/workspace
 
 可选环境变量：
 
-- `MINIMAX_API_KEY`（必填）：MiniMax API Key
+- `MINIMAX_API_KEY`（必填）：LLM API Key
 - `MINIMAX_MODEL`：模型名，默认 `MiniMax-M2.7`
+- `MINIMAX_OPENAI_BASE_URL`：OpenAI 兼容 API 地址，可替换为其他供应商
 - `MINIMAX_SYSTEM`：可选，追加到 system 的额外说明（如人设、规则）
 - `MINICLAW_WORKSPACE`：工作区目录，也可通过 `--workspace` 参数指定（CLI 参数优先）。未指定时默认为项目根目录
 
@@ -60,7 +61,7 @@ miniclaw/
 │   ├── config.py        # 常量
 │   ├── skills.py        # 技能扫描与 system 文案
 │   ├── code_execution.py # 工具实现
-│   ├── api.py           # MiniMax API 与 tool 循环
+│   ├── api.py           # LLM API 与 tool 循环
 │   └── cli.py           # 命令行 REPL
 ├── tests/               # 单元测试
 └── .skills/             # 技能目录

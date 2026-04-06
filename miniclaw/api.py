@@ -1,4 +1,4 @@
-"""MiniMax API 调用：认证、流式 chat、带 tool 的对话循环、TTFT 与缓存指标监控。"""
+"""LLM API 调用：认证、流式 chat、带 tool 的对话循环、TTFT 与缓存指标监控。"""
 import json
 import os
 import sys
@@ -28,7 +28,7 @@ def get_api_key() -> str:
 
 
 def create_client(api_key: str) -> OpenAI:
-    """创建 MiniMax OpenAI 兼容客户端。"""
+    """创建 OpenAI 兼容客户端。"""
     return OpenAI(base_url=OPENAI_BASE_URL, api_key=api_key)
 
 
@@ -214,7 +214,7 @@ def chat_stream(
     print_reasoning: bool = False,
     **kwargs,
 ) -> tuple[dict, object]:
-    """流式调用 MiniMax API，逐 token 输出文本，测量 TTFT，返回 (message_dict, usage)。"""
+    """流式调用 LLM API，逐 token 输出文本，测量 TTFT，返回 (message_dict, usage)。"""
     _log_request(messages, model, kwargs)
 
     start = time.monotonic()
@@ -248,7 +248,7 @@ def chat_stream(
 def chat_raw(
     client: OpenAI, messages: list[dict], model: str = DEFAULT_MODEL, **kwargs
 ) -> tuple[dict, dict]:
-    """非流式调用 MiniMax API，返回 (message_dict, response_data)。"""
+    """非流式调用 LLM API，返回 (message_dict, response_data)。"""
     _log_request(messages, model, kwargs)
     resp = client.chat.completions.create(
         model=model, messages=messages, timeout=HTTP_TIMEOUT, **kwargs,
@@ -269,7 +269,7 @@ def chat_raw(
 
 
 def chat(client: OpenAI, messages: list[dict], model: str = DEFAULT_MODEL, **kwargs) -> str:
-    """非流式调用 MiniMax API，返回助手回复文本。"""
+    """非流式调用 LLM API，返回助手回复文本。"""
     msg, _ = chat_raw(client, messages, model=model, **kwargs)
     return (msg.get("content") or "").strip()
 
