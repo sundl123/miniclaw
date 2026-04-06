@@ -24,6 +24,7 @@ def _create_prompt_session() -> PromptSession:
     bindings = KeyBindings()
 
     @bindings.add("escape", "enter")
+    @bindings.add("c-j")
     def _insert_newline(event):
         event.current_buffer.insert_text("\n")
 
@@ -85,7 +86,7 @@ def _repl_loop(session: dict) -> None:
     print(f"工作区: {workspace}")
     print("MiniMax 命令行对话 + Code Execution + .skills")
     print("  /quit 退出 | /clear 清空历史 | /model 查看模型 | /plan 进入规划模式")
-    print("  Alt+Enter 换行 | ↑/↓ 历史记录 | Ctrl+C 取消输入 | Ctrl+D 退出")
+    print("  Ctrl+J 换行 | ↑/↓ 历史记录 | Ctrl+C 取消输入 | Ctrl+D 退出")
     print("-" * 50)
 
     while True:
