@@ -6,7 +6,6 @@ from typing import Optional
 
 import openai
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
 from prompt_toolkit.key_binding import KeyBindings
 
 from miniclaw.api import create_client, get_api_key, run_turn_with_tools
@@ -16,11 +15,8 @@ from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
 
-_HISTORY_FILE = os.path.expanduser("~/.miniclaw_history")
-
-
 def _create_prompt_session() -> PromptSession:
-    """创建支持 CJK、多行编辑和历史记录的 PromptSession。"""
+    """创建支持 CJK 和多行编辑的 PromptSession。"""
     bindings = KeyBindings()
 
     @bindings.add("escape", "enter")
@@ -29,7 +25,6 @@ def _create_prompt_session() -> PromptSession:
         event.current_buffer.insert_text("\n")
 
     return PromptSession(
-        history=FileHistory(_HISTORY_FILE),
         key_bindings=bindings,
         multiline=False,
     )
@@ -84,7 +79,7 @@ def _repl_loop(session: dict) -> None:
     prompt_session = _create_prompt_session()
 
     print(f"工作区: {workspace}")
-    print("MiniMax 命令行对话 + Code Execution + .skills")
+    print("miniclaw — 命令行 LLM 对话 + Code Execution + .skills")
     print("  /quit 退出 | /clear 清空历史 | /model 查看模型 | /plan 进入规划模式")
     print("  Ctrl+J 换行 | ↑/↓ 历史记录 | Ctrl+C 取消输入 | Ctrl+D 退出")
     print("-" * 50)
@@ -155,7 +150,7 @@ def _repl_loop(session: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="MiniMax 命令行 LLM 对话工具，支持 code-execution 与 .skills 技能目录",
+        description="miniclaw — 命令行 LLM 对话工具，支持 code-execution 与 .skills 技能目录",
     )
     parser.add_argument(
         "-w", "--workspace",

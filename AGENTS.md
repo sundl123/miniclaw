@@ -6,16 +6,16 @@
 
 ## 1. 项目介绍
 
-**miniclaw** 是基于 **MiniMax API** 的命令行 LLM 对话工具，核心能力包括：
+**miniclaw** 是命令行 LLM 对话工具（通用 harness 框架），底层模型可替换，当前默认接入 MiniMax API。核心能力包括：
 
-- **对话**：使用 MiniMax 文本对话 API（`api.minimaxi.com`），支持多轮对话，默认模型 `MiniMax-M2.7`。
+- **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量切换模型和 API 地址）。
 - **Tool Call**：模型可调用 `code_execution` 工具，在工作区（项目根）内执行 bash、查看/创建/编辑文件。
 - **.skills 技能目录**：启动时自动扫描项目根下 `.skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `view_file` 读取 `.skills/<name>/SKILL.md` 使用技能。
 
 **主要入口与结构**：
 
 - `chat.py`：入口脚本，仅调用 `miniclaw.cli.main()`。
-- `miniclaw/` 包：`config.py`（常量）、`skills.py`（技能扫描与 system 文案）、`code_execution.py`（工具实现）、`api.py`（MiniMax 请求与 tool 循环）、`cli.py`（REPL 主流程）。
+- `miniclaw/` 包：`config.py`（常量）、`skills.py`（技能扫描与 system 文案）、`code_execution.py`（工具实现）、`api.py`（LLM API 请求与 tool 循环）、`cli.py`（REPL 主流程）。
 - `.skills/`：技能目录，每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。示例：`.skills/example-skill/`。
 - `tests/`：单元测试（`test_skills.py`、`test_code_execution.py`、`test_api.py`、`test_cli.py`）。
 - 工作区根默认为项目根（即 `chat.py` 所在目录），可通过 `--workspace`（`-w`）参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > 项目根）；所有文件与 bash 的 cwd 均为工作区根目录，路径禁止 `..` 逃逸。

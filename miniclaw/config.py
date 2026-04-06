@@ -1,4 +1,4 @@
-"""配置常量：工作区根、路径安全、MiniMax API 地址与默认模型。"""
+"""配置常量：工作区根、路径安全、API 地址与默认模型。"""
 import os
 
 # 工作区根 = 包所在目录的上一级（项目根，即 chat.py 所在目录）
@@ -23,7 +23,7 @@ BASE_URL = "https://api.minimaxi.com"
 OPENAI_BASE_URL = os.environ.get("MINIMAX_OPENAI_BASE_URL", "").strip() or f"{BASE_URL}/v1"
 DEFAULT_MODEL = "MiniMax-M2.7"
 
-# MiniMax HTTP 请求超时（秒，含连接与读）。可用 MINIMAX_HTTP_TIMEOUT 覆盖。
+# HTTP 请求超时（秒，含连接与读）。可用 MINIMAX_HTTP_TIMEOUT 覆盖。
 _raw_http_timeout = os.environ.get("MINIMAX_HTTP_TIMEOUT", "").strip()
 try:
     HTTP_TIMEOUT = int(_raw_http_timeout) if _raw_http_timeout else 300
