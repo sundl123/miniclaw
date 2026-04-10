@@ -20,7 +20,9 @@ from miniclaw.plan_mode import (
     handle_exit_plan_mode,
     _is_plan_dir_write,
     check_plan_mode,
+    is_readonly_bash,
 )
+from miniclaw.settings import load_workspace_config, get_plan_allowed_patterns
 
 
 class TestResolvePath(unittest.TestCase):
@@ -340,11 +342,21 @@ class TestCheckPlanMode(unittest.TestCase):
             self.assertIn("error", data)
             self.assertIn("Plan Mode", data["error"])
 
-    def test_plan_mode_blocks_bash(self):
+    def test_plan_mode_allows_readonly_bash(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
-            result = check_plan_mode("bash", {"command": "echo hi"}, ctx)
+            self.assertIsNone(check_plan_mode("bash", {"command": "echo hi"}, ctx))
+            self.assertIsNone(check_plan_mode("bash", {"command": "ls -la"}, ctx))
+            self.assertIsNone(check_plan_mode("bash", {"command": "git log --oneline"}, ctx))
+
+    def test_plan_mode_blocks_non_readonly_bash(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = self._make_ctx(root)
+            result = check_plan_mode("bash", {"command": "rm -rf /tmp/test"}, ctx)
             self.assertIsNotNone(result)
+            data = json.loads(result)
+            self.assertIn("error", data)
+            self.assertIn("只读", data["error"])
 
     def test_plan_mode_blocks_edit_non_plan(self):
         with tempfile.TemporaryDirectory() as root:
@@ -435,6 +447,176 @@ class TestExecuteToolPlanMode(unittest.TestCase):
             data = json.loads(result)
             self.assertIn("error", data)
             self.assertEqual(ctx["mode"], "plan")
+
+
+# ---------------------------------------------------------------------------
+# Bash 只读判定测试
+# ---------------------------------------------------------------------------
+
+class TestIsReadonlyBash(unittest.TestCase):
+    """is_readonly_bash() 的单元测试。"""
+
+    # --- 内置白名单命令 ---
+
+    def test_simple_readonly_commands(self):
+        for cmd in ("ls", "ls -la", "cat foo.py", "head -20 main.py",
+                     "wc -l *.py", "find . -name '*.py'", "pwd", "echo hello"):
+            self.assertTrue(is_readonly_bash(cmd), f"应为只读: {cmd}")
+
+    def test_grep_and_search(self):
+        self.assertTrue(is_readonly_bash("grep -rn 'def main' ."))
+        self.assertTrue(is_readonly_bash("rg 'TODO' src/"))
+
+    def test_git_readonly_subcommands(self):
+        for sub in ("log", "status", "diff", "branch", "show", "tag",
+                     "ls-files", "blame"):
+            cmd = f"git {sub}"
+            self.assertTrue(is_readonly_bash(cmd), f"应为只读: {cmd}")
+        self.assertTrue(is_readonly_bash("git log --oneline -10"))
+        self.assertTrue(is_readonly_bash("git diff HEAD~1"))
+
+    def test_git_write_subcommands_blocked(self):
+        for sub in ("commit", "push", "pull", "merge", "rebase",
+                     "checkout", "reset", "clean", "rm"):
+            cmd = f"git {sub}"
+            self.assertFalse(is_readonly_bash(cmd), f"应为非只读: {cmd}")
+
+    def test_bare_git_blocked(self):
+        self.assertFalse(is_readonly_bash("git"))
+
+    # --- 非白名单命令 ---
+
+    def test_write_commands_blocked(self):
+        for cmd in ("rm -rf /tmp/test", "mkdir new_dir", "mv a.py b.py",
+                     "cp src dst", "touch new.txt", "chmod 755 script.sh"):
+            self.assertFalse(is_readonly_bash(cmd), f"应为非只读: {cmd}")
+
+    # --- 重定向检测 ---
+
+    def test_redirect_blocked(self):
+        self.assertFalse(is_readonly_bash("echo hello > out.txt"))
+        self.assertFalse(is_readonly_bash("cat a.py >> all.txt"))
+        self.assertFalse(is_readonly_bash("ls -la > files.txt"))
+
+    # --- 复合命令 ---
+
+    def test_compound_all_readonly(self):
+        self.assertTrue(is_readonly_bash("ls && cat foo.py"))
+        self.assertTrue(is_readonly_bash("git status && git log --oneline"))
+        self.assertTrue(is_readonly_bash("echo start; ls; echo done"))
+        self.assertTrue(is_readonly_bash("cat a.py | grep def | wc -l"))
+
+    def test_compound_with_write_blocked(self):
+        self.assertFalse(is_readonly_bash("ls && rm -rf /tmp"))
+        self.assertFalse(is_readonly_bash("echo ok; mkdir new"))
+        self.assertFalse(is_readonly_bash("git status && git commit -m 'x'"))
+
+    # --- 边界情况 ---
+
+    def test_empty_command(self):
+        self.assertTrue(is_readonly_bash(""))
+        self.assertTrue(is_readonly_bash("   "))
+
+    def test_absolute_path_command(self):
+        self.assertTrue(is_readonly_bash("/usr/bin/ls -la"))
+        self.assertTrue(is_readonly_bash("/usr/bin/cat foo.txt"))
+
+    # --- 配置文件正则扩展 ---
+
+    def test_extra_patterns_match(self):
+        import re
+        pats = [re.compile(r"^firecrawl\b"), re.compile(r"^curl\s+-s")]
+        self.assertTrue(is_readonly_bash("firecrawl search 'topic'", pats))
+        self.assertTrue(is_readonly_bash("curl -s https://example.com", pats))
+
+    def test_extra_patterns_no_match(self):
+        import re
+        pats = [re.compile(r"^firecrawl\b")]
+        self.assertFalse(is_readonly_bash("wget https://example.com", pats))
+
+    def test_extra_patterns_in_compound(self):
+        import re
+        pats = [re.compile(r"^firecrawl\b")]
+        self.assertTrue(is_readonly_bash("ls && firecrawl search 'x'", pats))
+        self.assertFalse(is_readonly_bash("firecrawl search 'x' && rm tmp", pats))
+
+
+# ---------------------------------------------------------------------------
+# 配置文件加载测试
+# ---------------------------------------------------------------------------
+
+class TestConfigLoading(unittest.TestCase):
+    """settings.py 配置加载的单元测试。"""
+
+    def test_no_config_file(self):
+        with tempfile.TemporaryDirectory() as root:
+            self.assertEqual(load_workspace_config(root), {})
+            self.assertEqual(get_plan_allowed_patterns(root), [])
+
+    def test_valid_config(self):
+        with tempfile.TemporaryDirectory() as root:
+            cfg_dir = os.path.join(root, ".miniclaw")
+            os.makedirs(cfg_dir)
+            with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+                json.dump({
+                    "plan_mode": {
+                        "allowed_bash_patterns": [r"^firecrawl\b", r"^curl\s"]
+                    }
+                }, f)
+            config = load_workspace_config(root)
+            self.assertIn("plan_mode", config)
+            patterns = get_plan_allowed_patterns(root)
+            self.assertEqual(len(patterns), 2)
+
+    def test_invalid_json(self):
+        with tempfile.TemporaryDirectory() as root:
+            cfg_dir = os.path.join(root, ".miniclaw")
+            os.makedirs(cfg_dir)
+            with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+                f.write("{bad json")
+            self.assertEqual(load_workspace_config(root), {})
+
+    def test_invalid_regex_skipped(self):
+        with tempfile.TemporaryDirectory() as root:
+            cfg_dir = os.path.join(root, ".miniclaw")
+            os.makedirs(cfg_dir)
+            with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+                json.dump({
+                    "plan_mode": {
+                        "allowed_bash_patterns": [r"^good\b", "[invalid(regex"]
+                    }
+                }, f)
+            patterns = get_plan_allowed_patterns(root)
+            self.assertEqual(len(patterns), 1)
+
+    def test_non_list_patterns_ignored(self):
+        with tempfile.TemporaryDirectory() as root:
+            cfg_dir = os.path.join(root, ".miniclaw")
+            os.makedirs(cfg_dir)
+            with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+                json.dump({"plan_mode": {"allowed_bash_patterns": "not a list"}}, f)
+            self.assertEqual(get_plan_allowed_patterns(root), [])
+
+    def test_config_integrates_with_check_plan_mode(self):
+        """配置文件的正则应在 check_plan_mode 中生效。"""
+        with tempfile.TemporaryDirectory() as root:
+            cfg_dir = os.path.join(root, ".miniclaw")
+            plans_dir = os.path.join(cfg_dir, "plans")
+            os.makedirs(plans_dir)
+            with open(os.path.join(cfg_dir, "config.json"), "w") as f:
+                json.dump({
+                    "plan_mode": {"allowed_bash_patterns": [r"^firecrawl\b"]}
+                }, f)
+            ctx = {
+                "mode": "plan",
+                "plan_dir": plans_dir,
+                "workspace_root": root,
+            }
+            self.assertIsNone(
+                check_plan_mode("bash", {"command": "firecrawl search 'ai'"}, ctx)
+            )
+            result = check_plan_mode("bash", {"command": "wget http://x.com"}, ctx)
+            self.assertIsNotNone(result)
 
 
 if __name__ == "__main__":

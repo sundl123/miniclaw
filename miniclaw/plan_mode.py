@@ -1,8 +1,83 @@
 """Plan Mode：只读探索 + 结构化规划阶段，含权限检查、enter/exit handler 与 tool schema。"""
+from __future__ import annotations
+
 import json
 import os
+import re
+import shlex
 
 from miniclaw.config import WORKSPACE_ROOT, resolve_path
+from miniclaw.settings import get_plan_allowed_patterns
+
+
+# ---------------------------------------------------------------------------
+# Bash 只读命令白名单
+# ---------------------------------------------------------------------------
+
+READONLY_BASH_COMMANDS = frozenset({
+    # 文件内容查看
+    "cat", "head", "tail", "less", "more", "wc", "file", "strings",
+    # 目录与文件信息
+    "ls", "tree", "du", "df", "stat", "find", "which", "realpath",
+    "basename", "dirname", "readlink",
+    # 文本搜索与处理（只读类）
+    "grep", "rg", "sort", "uniq", "cut", "diff", "comm", "tr", "column",
+    # 系统信息
+    "pwd", "whoami", "uname", "date", "echo", "printf", "true", "false",
+    # 开发工具版本查询
+    "node", "python3", "python", "npm", "pip",
+})
+
+GIT_READONLY_SUBCOMMANDS = frozenset({
+    "log", "status", "diff", "branch", "show", "tag",
+    "remote", "ls-files", "blame", "shortlog", "describe",
+})
+
+_COMPOUND_SPLIT_RE = re.compile(r"\s*(?:&&|\|\||[;|])\s*")
+_REDIRECT_RE = re.compile(r"(?:>>?|<<)")
+
+
+def _is_single_command_readonly(
+    command: str, extra_patterns: list[re.Pattern] | None = None,
+) -> bool:
+    """判断单条（非复合）命令是否为只读。"""
+    stripped = command.strip()
+    if not stripped:
+        return True
+
+    if _REDIRECT_RE.search(stripped):
+        return False
+
+    try:
+        tokens = shlex.split(stripped)
+    except ValueError:
+        return False
+    if not tokens:
+        return True
+
+    base_cmd = os.path.basename(tokens[0])
+
+    if base_cmd == "git":
+        sub = tokens[1] if len(tokens) > 1 else ""
+        return sub in GIT_READONLY_SUBCOMMANDS
+
+    if base_cmd in READONLY_BASH_COMMANDS:
+        return True
+
+    if extra_patterns:
+        for pat in extra_patterns:
+            if pat.search(stripped):
+                return True
+
+    return False
+
+
+def is_readonly_bash(
+    command: str, extra_patterns: list[re.Pattern] | None = None,
+) -> bool:
+    """判断 bash 命令是否为只读。复合命令要求每段都只读。"""
+    parts = _COMPOUND_SPLIT_RE.split(command)
+    return all(_is_single_command_readonly(p, extra_patterns) for p in parts)
 
 
 # ---------------------------------------------------------------------------
@@ -35,6 +110,20 @@ def check_plan_mode(name: str, args: dict, context: dict):
         return None
     if _is_plan_dir_write(name, args, context):
         return None
+
+    if name == "bash":
+        command = args.get("command", "")
+        root = context.get("workspace_root") or WORKSPACE_ROOT
+        extra = get_plan_allowed_patterns(root)
+        if is_readonly_bash(command, extra):
+            return None
+        return json.dumps({
+            "error": "Plan Mode 下只允许执行只读 bash 命令（如 ls, cat, git log, find 等）。"
+                     "当前命令被判定为可能产生副作用，已拒绝执行。"
+                     "如需执行写操作，请先调用 exit_plan_mode 退出规划模式。"
+                     "提示：可在 .miniclaw/config.json 的 plan_mode.allowed_bash_patterns 中添加自定义放行规则。"
+        }, ensure_ascii=False)
+
     plan_dir = context.get("plan_dir", "")
     return json.dumps({
         "error": "当前处于 Plan Mode（规划模式），不允许执行写操作。"
@@ -59,7 +148,9 @@ def get_plan_mode_instructions(plan_dir: str) -> str:
         "\n"
         "## 规则\n"
         "- 可以使用 read、glob、grep 来探索代码库\n"
-        "- 不要使用 write、edit、bash 等修改操作（会被拒绝）\n"
+        "- 可以使用 bash 执行只读命令（如 ls、cat、git log、find、wc、grep 等）\n"
+        "- 不允许使用 bash 执行写操作（如 rm、mv、mkdir、git commit/push 等，会被拒绝）\n"
+        "- 不允许使用 write、edit 工具修改文件（plan 目录除外）\n"
         f"- 唯一例外：可以使用 write/edit 工具在 {plan_dir}/ 目录下创建和编辑 plan 文件\n"
         "\n"
         "## 工作流程\n"
