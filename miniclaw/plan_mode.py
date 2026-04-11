@@ -118,17 +118,16 @@ def check_plan_mode(name: str, args: dict, context: dict):
         if is_readonly_bash(command, extra):
             return None
         return json.dumps({
-            "error": "Plan Mode 下只允许执行只读 bash 命令（如 ls, cat, git log, find 等）。"
-                     "当前命令被判定为可能产生副作用，已拒绝执行。"
-                     "如需执行写操作，请先调用 exit_plan_mode 退出规划模式。"
-                     "提示：可在 .miniclaw/config.json 的 plan_mode.allowed_bash_patterns 中添加自定义放行规则。"
+            "error": "Plan Mode 下只允许执行只读 bash 命令（如 ls, cat, git log, find, wc 等）。"
+                     "当前命令可能产生副作用，已被拒绝。"
+                     "请继续使用只读命令探索代码库，完成你的 plan 文件。"
         }, ensure_ascii=False)
 
     plan_dir = context.get("plan_dir", "")
     return json.dumps({
-        "error": "当前处于 Plan Mode（规划模式），不允许执行写操作。"
-                 f"唯一例外是 plan 目录：{plan_dir}/ 下的文件。"
-                 "请先完成规划，然后调用 exit_plan_mode 退出规划模式。"
+        "error": "Plan Mode 下不允许执行此写操作。"
+                 f"你只能在 plan 目录（{plan_dir}/）下创建和编辑 plan 文件。"
+                 "请继续探索代码库并完善你的 plan 文件，而不是尝试修改代码。"
     }, ensure_ascii=False)
 
 
