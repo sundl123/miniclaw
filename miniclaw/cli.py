@@ -73,7 +73,7 @@ def _repl_loop(session: dict) -> None:
     prompt_session = _create_prompt_session()
 
     print(f"工作区: {workspace}")
-    print("miniclaw — 命令行 LLM 对话 + Code Execution + .skills")
+    print("miniclaw — 命令行 LLM 对话 + Code Execution + skills")
     print("  /quit 退出 | /clear 清空历史 | /model 查看模型 | /plan 进入规划模式")
     print("  Ctrl+J 换行 | ↑/↓ 历史记录 | Ctrl+C 取消输入 | Ctrl+D 退出")
     print("-" * 50)

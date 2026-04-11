@@ -114,7 +114,10 @@ def check_plan_mode(name: str, args: dict, context: dict):
     if name == "bash":
         command = args.get("command", "")
         root = context.get("workspace_root") or os.getcwd()
-        extra = get_plan_allowed_patterns(root)
+        extra = context.get("_plan_allowed_patterns")
+        if extra is None:
+            extra = get_plan_allowed_patterns(root)
+            context["_plan_allowed_patterns"] = extra
         if is_readonly_bash(command, extra):
             return None
         return json.dumps({

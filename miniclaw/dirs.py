@@ -2,9 +2,7 @@
 from __future__ import annotations
 
 import importlib.resources as pkg_resources
-import json
 import os
-import shutil
 import sys
 
 USER_DATA_DIR = os.path.join(os.path.expanduser("~"), ".miniclaw")

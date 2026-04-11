@@ -59,7 +59,7 @@ def get_plan_allowed_patterns(workspace_root: str) -> list[re.Pattern]:
 
         {
           "plan_mode": {
-            "allowed_bash_patterns": ["^firecrawl\\\\b", "^curl\\\\s+-s"]
+            "allowed_bash_patterns": ["^firecrawl\\b", "^curl\\s+-s"]
           }
         }
 
