@@ -1,10 +1,11 @@
 """CLI 模块的单元测试。"""
+import json
 import os
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from miniclaw.dirs import resolve_workspace
+from miniclaw.dirs import resolve_workspace, ensure_user_config
 
 
 class TestResolveWorkspace(unittest.TestCase):
@@ -38,6 +39,75 @@ class TestResolveWorkspace(unittest.TestCase):
             with patch("os.path.abspath", return_value=d):
                 result = resolve_workspace(basename)
             self.assertTrue(os.path.isabs(result))
+
+
+class TestEnsureUserConfig(unittest.TestCase):
+    """ensure_user_config() 的单元测试，使用临时目录模拟 ~/.miniclaw/。"""
+
+    def _run_with_temp_home(self, callback):
+        """在临时目录中模拟 USER_DATA_DIR 来运行测试。"""
+        import miniclaw.dirs as dirs_mod
+        with tempfile.TemporaryDirectory() as tmp:
+            fake_data_dir = os.path.join(tmp, ".miniclaw")
+            original = dirs_mod.USER_DATA_DIR
+            dirs_mod.USER_DATA_DIR = fake_data_dir
+            try:
+                return callback(fake_data_dir)
+            finally:
+                dirs_mod.USER_DATA_DIR = original
+
+    def test_creates_dir_and_file(self):
+        def check(data_dir):
+            path, created = ensure_user_config()
+            self.assertTrue(created)
+            self.assertTrue(os.path.isfile(path))
+            self.assertEqual(path, os.path.join(data_dir, "config.json"))
+            return path
+        self._run_with_temp_home(check)
+
+    def test_created_file_is_valid_json(self):
+        def check(data_dir):
+            path, _ = ensure_user_config()
+            with open(path) as f:
+                data = json.load(f)
+            self.assertIn("plan_mode", data)
+            self.assertIsInstance(data["plan_mode"]["allowed_bash_patterns"], list)
+        self._run_with_temp_home(check)
+
+    def test_does_not_overwrite_existing(self):
+        def check(data_dir):
+            os.makedirs(data_dir, exist_ok=True)
+            config_path = os.path.join(data_dir, "config.json")
+            with open(config_path, "w") as f:
+                f.write('{"custom": true}')
+            path, created = ensure_user_config()
+            self.assertFalse(created)
+            with open(path) as f:
+                data = json.load(f)
+            self.assertTrue(data["custom"])
+        self._run_with_temp_home(check)
+
+    def test_force_overwrites(self):
+        def check(data_dir):
+            os.makedirs(data_dir, exist_ok=True)
+            config_path = os.path.join(data_dir, "config.json")
+            with open(config_path, "w") as f:
+                f.write('{"custom": true}')
+            path, created = ensure_user_config(force=True)
+            self.assertTrue(created)
+            with open(path) as f:
+                data = json.load(f)
+            self.assertNotIn("custom", data)
+            self.assertIn("plan_mode", data)
+        self._run_with_temp_home(check)
+
+    def test_second_call_returns_false(self):
+        def check(data_dir):
+            _, created1 = ensure_user_config()
+            self.assertTrue(created1)
+            _, created2 = ensure_user_config()
+            self.assertFalse(created2)
+        self._run_with_temp_home(check)
 
 
 if __name__ == "__main__":

@@ -20,3 +20,6 @@ miniclaw = "miniclaw.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["miniclaw*"]
+
+[tool.setuptools.package-data]
+miniclaw = ["default_config.json"]
