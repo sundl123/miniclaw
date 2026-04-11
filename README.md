@@ -4,10 +4,16 @@
 
 ## 安装
 
-### 推荐方式：pipx（隔离环境，自动处理 PATH）
+### 推荐方式：pipx
+
+[pipx](https://pipx.pypa.io/) 会在隔离的虚拟环境中安装 miniclaw，不污染系统 Python 环境：
 
 ```bash
-pip install pipx      # 如果还没装 pipx
+# 安装 pipx（如果还没有）
+pip install pipx
+pipx ensurepath    # 确保 ~/.local/bin 在 PATH 中，首次安装后需重开终端
+
+# 安装 miniclaw
 pipx install miniclaw
 ```
 
@@ -27,10 +33,9 @@ pip install -e .
 
 安装后即可在任意目录使用 `miniclaw` 命令。
 
-> **macOS 系统自带 Python 用户注意**：如果提示 `command not found: miniclaw`，需要将 pip 的 bin 目录加入 PATH：
-> ```bash
-> echo 'export PATH="$HOME/Library/Python/3.9/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
-> ```
+> **提示**：如果安装后提示 `command not found: miniclaw`，说明安装目录不在 PATH 中。
+> - pipx 用户：运行 `pipx ensurepath` 然后重开终端
+> - pip 用户（macOS）：`echo 'export PATH="$HOME/Library/Python/3.9/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc`
 
 ## 快速开始
 
