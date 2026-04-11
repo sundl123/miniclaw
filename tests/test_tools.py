@@ -548,6 +548,19 @@ class TestIsReadonlyBash(unittest.TestCase):
 class TestConfigLoading(unittest.TestCase):
     """settings.py 配置加载的单元测试。"""
 
+    def setUp(self):
+        """隔离全局配置目录，避免测试读到真实的 ~/.miniclaw/config.json。"""
+        import miniclaw.dirs as dirs_mod
+        self._orig_user_data_dir = dirs_mod.USER_DATA_DIR
+        self._tmpdir = tempfile.mkdtemp()
+        dirs_mod.USER_DATA_DIR = self._tmpdir
+
+    def tearDown(self):
+        import miniclaw.dirs as dirs_mod
+        dirs_mod.USER_DATA_DIR = self._orig_user_data_dir
+        import shutil
+        shutil.rmtree(self._tmpdir, ignore_errors=True)
+
     def test_no_config_file(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(load_workspace_config(root), {})

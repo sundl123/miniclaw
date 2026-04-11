@@ -89,12 +89,7 @@ miniclaw 的文件分两级存放：
 
 配置文件为 JSON 格式，支持全局（`~/.miniclaw/config.json`）和 workspace（`{workspace}/.miniclaw/config.json`）两级，workspace 配置优先。
 
-项目根目录下的 `config.sample.json` 是配置模板，可复制使用：
-
-```bash
-mkdir -p .miniclaw
-cp config.sample.json .miniclaw/config.json
-```
+首次运行 `miniclaw` 或执行 `miniclaw init` 会自动在 `~/.miniclaw/` 下创建默认配置文件。如需重置：`miniclaw init --force`。
 
 当前支持的配置项：
 
@@ -138,7 +133,6 @@ cp config.sample.json .miniclaw/config.json
 miniclaw/
 ├── chat.py              # 开发便利入口（等同于 miniclaw 命令）
 ├── pyproject.toml       # 包配置与入口点
-├── config.sample.json   # 配置文件模板
 ├── miniclaw/            # Python 包
 │   ├── cli.py           # 命令行 REPL
 │   ├── api.py           # LLM API 与 tool 循环
