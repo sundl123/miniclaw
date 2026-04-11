@@ -6,21 +6,23 @@
 
 ## 1. 项目介绍
 
-**miniclaw** 是命令行 LLM 对话工具（通用 harness 框架），底层模型可替换，当前默认接入 MiniMax API。核心能力包括：
+**miniclaw** 是命令行 LLM 对话工具（通用 harness 框架），可通过 `pip install miniclaw` 安装后在任意目录使用 `miniclaw` 命令启动。底层模型可替换，当前默认接入 MiniMax API。核心能力包括：
 
 - **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量切换模型和 API 地址）。
-- **Tool Call**：模型可调用 `code_execution` 工具，在工作区（项目根）内执行 bash、查看/创建/编辑文件。
-- **.skills 技能目录**：启动时自动扫描项目根下 `.skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `view_file` 读取 `.skills/<name>/SKILL.md` 使用技能。
+- **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash` 六个工具，在 workspace 内读写文件和执行命令。
+- **Plan Mode**：面对复杂任务时进入只读规划阶段，只读 bash 命令自动放行，写操作被拦截。可通过 `.miniclaw/config.json` 扩展允许的 bash 命令。
+- **.skills 技能目录**：启动时自动扫描 workspace 下 `.skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `read` 读取 `.skills/<name>/SKILL.md` 使用技能。
 
 **主要入口与结构**：
 
-- `chat.py`：入口脚本，仅调用 `miniclaw.cli.main()`。
-- `miniclaw/` 包：`config.py`（常量）、`skills.py`（技能扫描与 system 文案）、`code_execution.py`（工具实现）、`api.py`（LLM API 请求与 tool 循环）、`cli.py`（REPL 主流程）。
-- `.skills/`：技能目录，每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。示例：`.skills/example-skill/`。
-- `tests/`：单元测试（`test_skills.py`、`test_code_execution.py`、`test_api.py`、`test_cli.py`）。
-- 工作区根默认为项目根（即 `chat.py` 所在目录），可通过 `--workspace`（`-w`）参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > 项目根）；所有文件与 bash 的 cwd 均为工作区根目录，路径禁止 `..` 逃逸。
+- `miniclaw` 命令（pip 安装后可用）或 `python3 chat.py`：入口，调用 `miniclaw.cli.main()`。
+- `miniclaw/` 包：`cli.py`（REPL）、`api.py`（LLM API 与 tool 循环）、`tools.py`（六个基础工具 + 分发）、`plan_mode.py`（plan mode 权限控制 + bash 白名单）、`config.py`（路径安全 + API 常量）、`dirs.py`（目录解析）、`settings.py`（配置加载与合并）、`skills.py`（技能扫描）、`dev_logging.py`（开发者日志）。
+- `.skills/`：技能目录，每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。
+- `tests/`：单元测试（`test_tools.py`、`test_api.py`、`test_cli.py`、`test_skills.py`、`test_dev_logging.py`）。
+- 文件分两级存放：用户级（`~/.miniclaw/`，含 logs 和全局 config）和 workspace 级（`{cwd}/.miniclaw/`，含 plans 和 workspace config）。
+- workspace 默认为当前目录，可通过 `-w` 参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > CWD）；所有文件与 bash 的 cwd 均为 workspace，路径禁止 `..` 逃逸。
 
-**运行方式**：`MINIMAX_API_KEY=your_key python3 chat.py`（可附加 `--workspace /path/to/dir`）。详见 [README.md](README.md)。
+**运行方式**：`MINIMAX_API_KEY=your_key miniclaw`（可附加 `-w /path/to/dir`）。详见 [README.md](README.md)。
 
 ---
 
