@@ -113,23 +113,21 @@ def _repl_loop(session: dict) -> None:
             instructions = get_plan_mode_instructions(plan_dir)
             print(f"[已进入 Plan Mode，plan 目录: {plan_dir}/]")
             description = user_input[5:].strip()
-            if description:
-                messages.append({
-                    "role": "user",
-                    "content": f"{instructions}\n\n用户需求：{description}",
-                })
-                try:
-                    reply, messages = run_turn_with_tools(
-                        client, model, messages, tools,
-                        print_reasoning=True, workspace_root=workspace,
-                        context=context,
-                    )
-                    print()
-                except (openai.APIError, RuntimeError) as e:
-                    label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
-                            "API 错误" if isinstance(e, openai.APIError) else "错误"
-                    print(f"\n[{label}] {e}\n", file=sys.stderr)
-                    messages.pop()
+            content = (f"{instructions}\n\n用户需求：{description}"
+                       if description else instructions)
+            messages.append({"role": "user", "content": content})
+            try:
+                reply, messages = run_turn_with_tools(
+                    client, model, messages, tools,
+                    print_reasoning=True, workspace_root=workspace,
+                    context=context,
+                )
+                print()
+            except (openai.APIError, RuntimeError) as e:
+                label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
+                        "API 错误" if isinstance(e, openai.APIError) else "错误"
+                print(f"\n[{label}] {e}\n", file=sys.stderr)
+                messages.pop()
             continue
 
         messages.append({"role": "user", "content": user_input})

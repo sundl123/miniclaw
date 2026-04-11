@@ -1,0 +1,11 @@
+{
+  "_comment": "miniclaw workspace 配置文件示例。复制到 .miniclaw/config.json 后按需修改。",
+
+  "plan_mode": {
+    "_comment": "Plan mode 下额外允许的 bash 命令（正则表达式列表）。内置白名单已包含 ls、cat、git log 等常用只读命令，此处用于添加项目特有的命令。",
+    "allowed_bash_patterns": [
+      "^firecrawl\\b",
+      "^curl\\s+-s"
+    ]
+  }
+}

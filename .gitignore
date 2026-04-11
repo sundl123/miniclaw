@@ -25,4 +25,5 @@ dist/
 build/
 *.log
 .miniclaw_logs/
+.miniclaw/
 .default_workspace/
