@@ -62,7 +62,7 @@ class TestBuildSystemPrompt(unittest.TestCase):
         out = build_system_prompt(meta)
         self.assertIn("- a: A", out)
         self.assertIn("- b: B", out)
-        self.assertIn(".skills", out)
+        self.assertIn(".miniclaw/skills", out)
 
     def test_without_workspace_root(self):
         out = build_system_prompt([])

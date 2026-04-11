@@ -39,7 +39,7 @@ def _init_session(args: argparse.Namespace) -> dict:
     model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
     workspace = resolve_workspace(args.workspace)
 
-    skills_dir = os.path.join(workspace, ".skills")
+    skills_dir = os.path.join(workspace, ".miniclaw", "skills")
     skill_meta = scan_skills_metadata(skills_dir)
     system_prompt = build_system_prompt(skill_meta, workspace_root=workspace)
     extra_system = os.environ.get("MINIMAX_SYSTEM", "").strip()

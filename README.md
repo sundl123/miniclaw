@@ -55,7 +55,7 @@ miniclaw -w /path/to/workspace
 
 - **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash` 六个工具，在 workspace 内读写文件和执行命令。
 - **Plan Mode**：面对复杂任务时，模型可主动进入规划模式——只读探索代码库，产出结构化 plan 文件，经用户确认后再执行。plan mode 下只读 bash 命令（ls、cat、git log 等）自动放行，写操作被拦截。
-- **.skills**：启动时自动扫描 workspace 下 `.skills` 目录，将各技能的 name/description 注入 system prompt，模型按需读取 SKILL.md 使用技能。
+- **.skills**：启动时自动扫描 workspace 下 `.miniclaw/skills` 目录，将各技能的 name/description 注入 system prompt，模型按需读取 SKILL.md 使用技能。
 
 ## 对话内命令
 
@@ -79,10 +79,10 @@ miniclaw 的文件分两级存放：
 └── config.json                 全局配置（可选）
 
 {workspace}/                    workspace 级（跟随项目）
-├── .skills/                    技能目录
 └── .miniclaw/
     ├── config.json             workspace 配置（优先级高于全局）
-    └── plans/                  plan 文件
+    ├── plans/                  plan 文件
+    └── skills/                 技能目录
 ```
 
 ## 配置文件
@@ -122,9 +122,9 @@ cp config.sample.json .miniclaw/config.json
 | `MINICLAW_WORKSPACE` | 工作区目录，也可通过 `-w` 参数指定（CLI 参数优先）。未指定时默认为当前目录 |
 | `MINICLAW_DEV_LOG_DIR` | 自定义日志目录，默认 `~/.miniclaw/logs/` |
 
-## .skills 目录
+## Skills 技能目录
 
-在 workspace 下创建 `.skills/<技能名>/SKILL.md`，YAML frontmatter 含 `name`、`description`，正文写使用说明。模型会根据描述决定是否查阅该技能并执行其中步骤。示例见 `.skills/example-skill/`。
+在 workspace 下创建 `.miniclaw/skills/<技能名>/SKILL.md`，YAML frontmatter 含 `name`、`description`，正文写使用说明。模型会根据描述决定是否查阅该技能并执行其中步骤。
 
 ## 安全说明
 
@@ -150,7 +150,7 @@ miniclaw/
 │   ├── skills.py        # 技能扫描与 system prompt
 │   └── dev_logging.py   # 开发者日志
 ├── tests/               # 单元测试
-└── .skills/             # 技能目录（示例）
+└── docs/                # 设计文档
 ```
 
 ## 运行测试

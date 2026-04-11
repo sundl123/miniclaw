@@ -1,4 +1,4 @@
-"""miniclaw: 命令行 LLM 对话 + 工具集 + .skills 技能目录。"""
+"""miniclaw: 命令行 LLM 对话 + 工具集 + skills 技能目录。"""
 from miniclaw.api import chat, chat_raw, run_turn_with_tools
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.tools import execute_tool, get_tool_schemas
