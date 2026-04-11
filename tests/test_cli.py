@@ -4,16 +4,15 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from miniclaw.cli import resolve_workspace
-from miniclaw.config import WORKSPACE_ROOT
+from miniclaw.dirs import resolve_workspace
 
 
 class TestResolveWorkspace(unittest.TestCase):
-    def test_defaults_to_project_root(self):
+    def test_defaults_to_cwd(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("MINICLAW_WORKSPACE", None)
             result = resolve_workspace(None)
-        self.assertEqual(result, WORKSPACE_ROOT)
+        self.assertEqual(result, os.getcwd())
 
     def test_env_var_overrides_default(self):
         with tempfile.TemporaryDirectory() as d:

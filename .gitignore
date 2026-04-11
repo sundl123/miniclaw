@@ -23,6 +23,7 @@ package.json
 package-lock.json
 dist/
 build/
+*.egg-info/
 *.log
 .miniclaw_logs/
 .miniclaw/

@@ -2,18 +2,19 @@
 import argparse
 import os
 import sys
-from typing import Optional
 
 import openai
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 
 from miniclaw.api import create_client, get_api_key, run_turn_with_tools
-from miniclaw.config import DEFAULT_MODEL, WORKSPACE_ROOT
+from miniclaw.config import DEFAULT_MODEL
 from miniclaw.dev_logging import setup_dev_logging
+from miniclaw.dirs import resolve_workspace
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
+
 
 def _create_prompt_session() -> PromptSession:
     """创建支持 CJK 和多行编辑的 PromptSession。"""
@@ -28,16 +29,6 @@ def _create_prompt_session() -> PromptSession:
         key_bindings=bindings,
         multiline=False,
     )
-
-
-def resolve_workspace(cli_arg: Optional[str]) -> str:
-    """按优先级解析工作区目录：CLI 参数 > 环境变量 > 项目根。"""
-    raw = cli_arg or os.environ.get("MINICLAW_WORKSPACE", "").strip() or WORKSPACE_ROOT
-    workspace = os.path.abspath(raw)
-    if not os.path.isdir(workspace):
-        print(f"错误: 工作区目录不存在: {workspace}", file=sys.stderr)
-        sys.exit(1)
-    return workspace
 
 
 def _init_session(args: argparse.Namespace) -> dict:
@@ -154,7 +145,7 @@ def main() -> None:
         "-w", "--workspace",
         default=None,
         help="工作区目录（技能扫描与文件操作的根）。也可通过 MINICLAW_WORKSPACE 环境变量设置。"
-             "未指定时默认为项目根目录。",
+             "未指定时默认为当前目录。",
     )
     args = parser.parse_args()
     session = _init_session(args)
