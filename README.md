@@ -110,7 +110,7 @@ miniclaw 的文件分两级存放：
 
 | 变量 | 说明 |
 |------|------|
-| `MINIMAX_API_KEY`（必填） | LLM API Key |
+| `MINIMAX_API_KEY` | LLM API Key（也可在 config.json 中设置 `api_key` 字段，环境变量优先） |
 | `MINIMAX_MODEL` | 模型名，默认 `MiniMax-M2.7` |
 | `MINIMAX_OPENAI_BASE_URL` | OpenAI 兼容 API 地址，可替换为其他供应商 |
 | `MINIMAX_SYSTEM` | 追加到 system prompt 的额外说明（如人设、规则） |

@@ -47,6 +47,11 @@ def load_merged_config(workspace_root: str) -> dict:
     return merged
 
 
+def get_api_key_from_config(workspace_root: str) -> str:
+    """从合并后的配置读取 api_key，返回空字符串如果未配置。"""
+    return load_merged_config(workspace_root).get("api_key", "")
+
+
 def get_plan_allowed_patterns(workspace_root: str) -> list[re.Pattern]:
     """从合并后的配置读取 plan_mode.allowed_bash_patterns，编译为正则列表。
 

@@ -37,10 +37,10 @@ def _init_session(args: argparse.Namespace) -> dict:
     if created:
         print(f"[首次运行] 已创建默认配置: {config_path}")
     setup_dev_logging()
-    api_key = get_api_key()
+    workspace = resolve_workspace(args.workspace)
+    api_key = get_api_key(workspace)
     client = create_client(api_key)
     model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
-    workspace = resolve_workspace(args.workspace)
 
     skills_dir = os.path.join(workspace, ".miniclaw", "skills")
     skill_meta = scan_skills_metadata(skills_dir)
