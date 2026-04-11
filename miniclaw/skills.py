@@ -23,7 +23,7 @@ def parse_frontmatter(content: str) -> dict:
 
 
 def scan_skills_metadata(skills_dir: str) -> list[dict]:
-    """扫描 .skills 目录，返回 [{"name": "...", "description": "..."}, ...]。"""
+    """扫描 skills 目录，返回 [{"name": "...", "description": "..."}, ...]。"""
     result = []
     if not os.path.isdir(skills_dir):
         return result
@@ -56,16 +56,16 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
         "你是助手，可以使用提供的工具来完成任务。",
         workspace_line,
         "## 技能（Skills）的访问方式",
-        "技能存放在工作区根目录下的 .skills 目录中。",
-        "每个技能对应一个子目录，例如 .skills/<skill_name>/。",
+        "技能存放在工作区的 .miniclaw/skills 目录中。",
+        "每个技能对应一个子目录，例如 .miniclaw/skills/<skill_name>/。",
         "目录内必有 SKILL.md，描述该技能的用途与使用方式；可能还有 assets/ 等子目录存放模板或脚本。",
-        "当你认为用户需求可能涉及某技能时，应先用 read 查看对应 .skills/<skill_name>/SKILL.md，再根据 SKILL.md 的说明决定是否执行 bash 或读写其他文件。",
+        "当你认为用户需求可能涉及某技能时，应先用 read 查看对应 .miniclaw/skills/<skill_name>/SKILL.md，再根据 SKILL.md 的说明决定是否执行 bash 或读写其他文件。",
         "",
-        "## 当前可用技能列表（自动从 .skills 扫描）",
+        "## 当前可用技能列表（自动从 .miniclaw/skills 扫描）",
     ]
     if skill_metadata_list:
         for s in skill_metadata_list:
             lines.append(f"- {s['name']}: {s['description']}")
     else:
-        lines.append("（暂无，可在 .skills 下添加技能目录及 SKILL.md）")
+        lines.append("（暂无，可在 .miniclaw/skills 下添加技能目录及 SKILL.md）")
     return "\n".join(lines)

@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "miniclaw"
+version = "0.1.0"
+description = "命令行 LLM 对话工具，支持 code-execution 与 skills 技能目录"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = [
+    "openai>=2.30.0",
+    "prompt-toolkit>=3.0.50",
+    "rich>=14.0.0",
+]
+
+[project.scripts]
+miniclaw = "miniclaw.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["miniclaw*"]
+
+[tool.setuptools.package-data]
+miniclaw = ["default_config.json"]

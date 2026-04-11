@@ -2,18 +2,19 @@
 import argparse
 import os
 import sys
-from typing import Optional
 
 import openai
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 
 from miniclaw.api import create_client, get_api_key, run_turn_with_tools
-from miniclaw.config import DEFAULT_MODEL, WORKSPACE_ROOT
+from miniclaw.config import DEFAULT_MODEL
 from miniclaw.dev_logging import setup_dev_logging
+from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
+
 
 def _create_prompt_session() -> PromptSession:
     """创建支持 CJK 和多行编辑的 PromptSession。"""
@@ -30,25 +31,18 @@ def _create_prompt_session() -> PromptSession:
     )
 
 
-def resolve_workspace(cli_arg: Optional[str]) -> str:
-    """按优先级解析工作区目录：CLI 参数 > 环境变量 > 项目根。"""
-    raw = cli_arg or os.environ.get("MINICLAW_WORKSPACE", "").strip() or WORKSPACE_ROOT
-    workspace = os.path.abspath(raw)
-    if not os.path.isdir(workspace):
-        print(f"错误: 工作区目录不存在: {workspace}", file=sys.stderr)
-        sys.exit(1)
-    return workspace
-
-
 def _init_session(args: argparse.Namespace) -> dict:
     """初始化会话：日志、客户端、技能、system prompt、工具。返回会话配置 dict。"""
+    config_path, created = ensure_user_config()
+    if created:
+        print(f"[首次运行] 已创建默认配置: {config_path}")
     setup_dev_logging()
-    api_key = get_api_key()
+    workspace = resolve_workspace(args.workspace)
+    api_key = get_api_key(workspace)
     client = create_client(api_key)
     model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
-    workspace = resolve_workspace(args.workspace)
 
-    skills_dir = os.path.join(workspace, ".skills")
+    skills_dir = os.path.join(workspace, ".miniclaw", "skills")
     skill_meta = scan_skills_metadata(skills_dir)
     system_prompt = build_system_prompt(skill_meta, workspace_root=workspace)
     extra_system = os.environ.get("MINIMAX_SYSTEM", "").strip()
@@ -79,7 +73,7 @@ def _repl_loop(session: dict) -> None:
     prompt_session = _create_prompt_session()
 
     print(f"工作区: {workspace}")
-    print("miniclaw — 命令行 LLM 对话 + Code Execution + .skills")
+    print("miniclaw — 命令行 LLM 对话 + Code Execution + skills")
     print("  /quit 退出 | /clear 清空历史 | /model 查看模型 | /plan 进入规划模式")
     print("  Ctrl+J 换行 | ↑/↓ 历史记录 | Ctrl+C 取消输入 | Ctrl+D 退出")
     print("-" * 50)
@@ -146,6 +140,17 @@ def _repl_loop(session: dict) -> None:
             messages.pop()
 
 
+def _handle_init(args: argparse.Namespace) -> None:
+    """处理 miniclaw init 子命令。"""
+    config_path, created = ensure_user_config(force=args.force)
+    if created:
+        print(f"已创建默认配置: {config_path}")
+    else:
+        print(f"配置文件已存在: {config_path}（使用 --force 覆盖）")
+    print(f"用户数据目录: {get_user_data_dir()}")
+    print(f"日志目录: {get_log_dir()}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="miniclaw — 命令行 LLM 对话工具，支持 code-execution 与 .skills 技能目录",
@@ -154,8 +159,19 @@ def main() -> None:
         "-w", "--workspace",
         default=None,
         help="工作区目录（技能扫描与文件操作的根）。也可通过 MINICLAW_WORKSPACE 环境变量设置。"
-             "未指定时默认为项目根目录。",
+             "未指定时默认为当前目录。",
     )
+    subparsers = parser.add_subparsers(dest="command")
+    init_parser = subparsers.add_parser(
+        "init", help="初始化 ~/.miniclaw/ 目录和默认配置",
+    )
+    init_parser.add_argument(
+        "--force", action="store_true", help="覆盖已有配置文件",
+    )
+
     args = parser.parse_args()
+    if args.command == "init":
+        _handle_init(args)
+        return
     session = _init_session(args)
     _repl_loop(session)

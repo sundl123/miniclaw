@@ -6,7 +6,7 @@ import os
 import re
 import shlex
 
-from miniclaw.config import WORKSPACE_ROOT, resolve_path
+from miniclaw.config import resolve_path
 from miniclaw.settings import get_plan_allowed_patterns
 
 
@@ -95,7 +95,7 @@ def _is_plan_dir_write(name: str, args: dict, context: dict) -> bool:
     target_path = args.get("path", "")
     if not plan_dir or not target_path:
         return False
-    root = context.get("workspace_root") or WORKSPACE_ROOT
+    root = context.get("workspace_root") or os.getcwd()
     abs_target = resolve_path(target_path, root)
     abs_plan_dir = os.path.normpath(plan_dir)
     return os.path.normpath(abs_target).startswith(abs_plan_dir + os.sep) or \
@@ -113,8 +113,11 @@ def check_plan_mode(name: str, args: dict, context: dict):
 
     if name == "bash":
         command = args.get("command", "")
-        root = context.get("workspace_root") or WORKSPACE_ROOT
-        extra = get_plan_allowed_patterns(root)
+        root = context.get("workspace_root") or os.getcwd()
+        extra = context.get("_plan_allowed_patterns")
+        if extra is None:
+            extra = get_plan_allowed_patterns(root)
+            context["_plan_allowed_patterns"] = extra
         if is_readonly_bash(command, extra):
             return None
         return json.dumps({

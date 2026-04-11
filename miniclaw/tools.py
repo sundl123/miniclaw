@@ -4,7 +4,7 @@ import json
 import os
 import subprocess
 
-from miniclaw.config import WORKSPACE_ROOT, resolve_path
+from miniclaw.config import resolve_path
 from miniclaw.plan_mode import (
     PLAN_MODE_HANDLERS,
     check_plan_mode,
@@ -161,7 +161,7 @@ def execute_tool(name: str, args: dict, workspace_root: str = None,
 
     context 承载 plan mode 状态（mode, plan_dir 等），由 REPL 层创建并透传。
     """
-    root = workspace_root or WORKSPACE_ROOT
+    root = workspace_root or os.getcwd()
     ctx = context or {}
 
     blocked = check_plan_mode(name, args, ctx)

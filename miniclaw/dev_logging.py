@@ -5,7 +5,7 @@ import logging
 import os
 from datetime import datetime
 
-from miniclaw.config import DEV_LOG_DIR
+from miniclaw.dirs import get_log_dir
 
 DEV_LOGGER_NAME = "miniclaw.dev"
 
@@ -16,7 +16,7 @@ def get_dev_logger() -> logging.Logger:
 
 def setup_dev_logging(log_dir: str | None = None) -> str:
     """按启动时间戳创建日志文件，整进程共用一个 FileHandler。返回日志文件绝对路径。"""
-    root = log_dir if log_dir is not None else DEV_LOG_DIR
+    root = log_dir if log_dir is not None else get_log_dir()
     os.makedirs(root, exist_ok=True)
     name = datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".log"
     path = os.path.join(root, name)
