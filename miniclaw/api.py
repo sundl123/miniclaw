@@ -18,14 +18,14 @@ from miniclaw.dev_logging import get_dev_logger
 # ---------------------------------------------------------------------------
 
 def get_api_key(workspace_root: str = None) -> str:
-    """读取 API Key，优先级：环境变量 MINIMAX_API_KEY > config.json 的 api_key。"""
-    key = os.environ.get("MINIMAX_API_KEY", "").strip()
+    """读取 API Key，优先级：环境变量 LLM_API_KEY > config.json 的 api_key。"""
+    key = os.environ.get("LLM_API_KEY", "").strip()
     if not key and workspace_root:
         from miniclaw.settings import get_api_key_from_config
         key = get_api_key_from_config(workspace_root).strip()
     if not key:
         print("错误: 未找到 API Key。请通过以下方式之一设置：", file=sys.stderr)
-        print("  1. 环境变量: export MINIMAX_API_KEY=your_key", file=sys.stderr)
+        print("  1. 环境变量: export LLM_API_KEY=your_key", file=sys.stderr)
         print("  2. 配置文件: ~/.miniclaw/config.json 的 api_key 字段", file=sys.stderr)
         sys.exit(1)
     return key

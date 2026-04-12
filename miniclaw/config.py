@@ -12,10 +12,10 @@ def resolve_path(path: str, workspace_root: str) -> str:
 
 
 BASE_URL = "https://api.minimaxi.com"
-OPENAI_BASE_URL = os.environ.get("MINIMAX_OPENAI_BASE_URL", "").strip() or f"{BASE_URL}/v1"
+OPENAI_BASE_URL = os.environ.get("LLM_BASE_URL", "").strip() or f"{BASE_URL}/v1"
 DEFAULT_MODEL = "MiniMax-M2.7"
 
-_raw_http_timeout = os.environ.get("MINIMAX_HTTP_TIMEOUT", "").strip()
+_raw_http_timeout = os.environ.get("LLM_HTTP_TIMEOUT", "").strip()
 try:
     HTTP_TIMEOUT = int(_raw_http_timeout) if _raw_http_timeout else 300
     if HTTP_TIMEOUT <= 0:

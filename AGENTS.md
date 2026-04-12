@@ -22,7 +22,7 @@
 - 文件分两级存放：用户级（`~/.miniclaw/`，含 logs 和全局 config）和 workspace 级（`{cwd}/.miniclaw/`，含 plans 和 workspace config）。
 - workspace 默认为当前目录，可通过 `-w` 参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > CWD）；所有文件与 bash 的 cwd 均为 workspace，路径禁止 `..` 逃逸。
 
-**运行方式**：`MINIMAX_API_KEY=your_key miniclaw`（可附加 `-w /path/to/dir`）。详见 [README.md](README.md)。
+**运行方式**：`LLM_API_KEY=your_key miniclaw`（可附加 `-w /path/to/dir`）。详见 [README.md](README.md)。
 
 ---
 

@@ -41,7 +41,7 @@ pip install -e .
 
 ```bash
 # 设置 API Key
-export MINIMAX_API_KEY=your_api_key
+export LLM_API_KEY=your_api_key
 
 # 在当前目录启动（当前目录即为 workspace）
 cd ~/my-project
@@ -110,10 +110,9 @@ miniclaw 的文件分两级存放：
 
 | 变量 | 说明 |
 |------|------|
-| `MINIMAX_API_KEY` | LLM API Key（也可在 config.json 中设置 `api_key` 字段，环境变量优先） |
-| `MINIMAX_MODEL` | 模型名，默认 `MiniMax-M2.7` |
-| `MINIMAX_OPENAI_BASE_URL` | OpenAI 兼容 API 地址，可替换为其他供应商 |
-| `MINIMAX_SYSTEM` | 追加到 system prompt 的额外说明（如人设、规则） |
+| `LLM_API_KEY` | LLM API Key（也可在 config.json 中设置 `api_key` 字段，环境变量优先） |
+| `LLM_MODEL` | 模型名，默认 `MiniMax-M2.7` |
+| `LLM_BASE_URL` | OpenAI 兼容 API 地址，可替换为其他供应商 |
 | `MINICLAW_WORKSPACE` | 工作区目录，也可通过 `-w` 参数指定（CLI 参数优先）。未指定时默认为当前目录 |
 | `MINICLAW_DEV_LOG_DIR` | 自定义日志目录，默认 `~/.miniclaw/logs/` |
 

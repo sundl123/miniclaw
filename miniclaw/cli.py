@@ -40,14 +40,11 @@ def _init_session(args: argparse.Namespace) -> dict:
     workspace = resolve_workspace(args.workspace)
     api_key = get_api_key(workspace)
     client = create_client(api_key)
-    model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
+    model = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
 
     skills_dir = os.path.join(workspace, ".miniclaw", "skills")
     skill_meta = scan_skills_metadata(skills_dir)
     system_prompt = build_system_prompt(skill_meta, workspace_root=workspace)
-    extra_system = os.environ.get("MINIMAX_SYSTEM", "").strip()
-    if extra_system:
-        system_prompt = system_prompt + "\n\n" + extra_system
 
     return {
         "client": client,
