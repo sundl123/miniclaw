@@ -1,11 +1,14 @@
 {
   "llm": {
     "api_key": "",
-    "model": "",
-    "base_url": "",
+    "model": "MiniMax-M2.7",
+    "base_url": "https://api.minimaxi.com/v1",
     "timeout": 300
   },
   "plan_mode": {
-    "allowed_bash_patterns": []
+    "allowed_bash_patterns": [
+      "^firecrawl\\b",
+      "^curl\\s+-s"
+    ]
   }
 }
