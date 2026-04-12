@@ -10,12 +10,12 @@ from miniclaw.dev_logging import setup_dev_logging
 
 
 class TestDevLogging(unittest.TestCase):
-    def test_setup_creates_timestamped_log(self):
+    def test_setup_creates_fixed_name_log(self):
         with tempfile.TemporaryDirectory() as d:
             path = setup_dev_logging(log_dir=d)
+            self.assertEqual(Path(path).name, "dev.log")
             self.assertTrue(Path(path).is_file())
-            self.assertTrue(path.endswith(".log"))
-            self.assertIn(Path(path).name, os.listdir(d))
+            self.assertIn("dev.log", os.listdir(d))
 
     def test_chat_raw_logs_full_payload(self):
         with tempfile.TemporaryDirectory() as d:

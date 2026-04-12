@@ -19,7 +19,7 @@ def setup_dev_logging(
     log_dir: str | None = None,
     workspace_root: str | None = None,
 ) -> str:
-    """按启动时间戳创建日志文件，支持日志轮转。返回日志文件绝对路径。
+    """配置日志文件，支持日志轮转。返回日志文件绝对路径。
 
     Args:
         log_dir: 日志目录，默认为 ~/.miniclaw/logs/
@@ -27,8 +27,9 @@ def setup_dev_logging(
     """
     root = log_dir if log_dir is not None else get_log_dir()
     os.makedirs(root, exist_ok=True)
-    name = datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".log"
-    path = os.path.join(root, name)
+
+    # 固定文件名，用于 RotatingFileHandler 轮转
+    path = os.path.join(root, "dev.log")
 
     # 获取轮转配置（get_log_config 内部已处理默认值）
     from miniclaw.settings import get_log_config
@@ -55,7 +56,7 @@ def setup_dev_logging(
     logger.setLevel(logging.INFO)
     logger.propagate = False
 
-    logger.info("dev log file: %s", path)
+    logger.info("dev log started at %s", datetime.now().strftime("%Y%m%d-%H%M%S-%f"))
     logger.info("log rotation: max_bytes=%d, backup_count=%d", max_bytes, backup_count)
     return path
 
