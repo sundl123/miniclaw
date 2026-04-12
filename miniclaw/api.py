@@ -1,48 +1,33 @@
-"""LLM API 调用：认证、流式 chat、带 tool 的对话循环、TTFT 与缓存指标监控。"""
+"""LLM API 调用：流式 chat、带 tool 的对话循环、TTFT 与缓存指标监控。"""
 import json
-import os
-import sys
 import time
 from dataclasses import dataclass, field
 from typing import Optional
 
 from openai import OpenAI
 
-from miniclaw.config import DEFAULT_MODEL, HTTP_TIMEOUT, OPENAI_BASE_URL
+from miniclaw.config import DEFAULT_BASE_URL, DEFAULT_HTTP_TIMEOUT, DEFAULT_MODEL
 from miniclaw.tools import execute_tool
 from miniclaw.dev_logging import get_dev_logger
 
 
 # ---------------------------------------------------------------------------
-# 认证与客户端
+# 客户端
 # ---------------------------------------------------------------------------
 
-def get_api_key(workspace_root: str = None) -> str:
-    """读取 API Key，优先级：环境变量 LLM_API_KEY > config.json 的 api_key。"""
-    key = os.environ.get("LLM_API_KEY", "").strip()
-    if not key and workspace_root:
-        from miniclaw.settings import get_api_key_from_config
-        key = get_api_key_from_config(workspace_root).strip()
-    if not key:
-        print("错误: 未找到 API Key。请通过以下方式之一设置：", file=sys.stderr)
-        print("  1. 环境变量: export LLM_API_KEY=your_key", file=sys.stderr)
-        print("  2. 配置文件: ~/.miniclaw/config.json 的 api_key 字段", file=sys.stderr)
-        sys.exit(1)
-    return key
-
-
-def create_client(api_key: str) -> OpenAI:
+def create_client(api_key: str, base_url: str = DEFAULT_BASE_URL) -> OpenAI:
     """创建 OpenAI 兼容客户端。"""
-    return OpenAI(base_url=OPENAI_BASE_URL, api_key=api_key)
+    return OpenAI(base_url=base_url, api_key=api_key)
 
 
 # ---------------------------------------------------------------------------
 # 日志辅助
 # ---------------------------------------------------------------------------
 
-def _log_request(messages: list[dict], model: str, kwargs: dict) -> None:
+def _log_request(messages: list[dict], model: str, kwargs: dict,
+                  base_url: str = "") -> None:
     """记录请求参数到 dev log（含完整 messages 用于排查）。"""
-    log_payload = {"base_url": OPENAI_BASE_URL, "model": model, "messages": messages}
+    log_payload = {"base_url": base_url, "model": model, "messages": messages}
     log_payload.update({k: v for k, v in kwargs.items()})
     try:
         text = json.dumps(log_payload, ensure_ascii=False, indent=2, default=str)
@@ -216,10 +201,11 @@ def chat_stream(
     *,
     print_output: bool = True,
     print_reasoning: bool = False,
+    timeout: int = DEFAULT_HTTP_TIMEOUT,
     **kwargs,
 ) -> tuple[dict, object]:
     """流式调用 LLM API，逐 token 输出文本，测量 TTFT，返回 (message_dict, usage)。"""
-    _log_request(messages, model, kwargs)
+    _log_request(messages, model, kwargs, base_url=getattr(client, '_base_url', ''))
 
     start = time.monotonic()
     stream = client.chat.completions.create(
@@ -227,7 +213,7 @@ def chat_stream(
         messages=messages,
         stream=True,
         stream_options={"include_usage": True},
-        timeout=HTTP_TIMEOUT,
+        timeout=timeout,
         **kwargs,
     )
 
@@ -250,12 +236,13 @@ def chat_stream(
 # ---------------------------------------------------------------------------
 
 def chat_raw(
-    client: OpenAI, messages: list[dict], model: str = DEFAULT_MODEL, **kwargs
+    client: OpenAI, messages: list[dict], model: str = DEFAULT_MODEL,
+    *, timeout: int = DEFAULT_HTTP_TIMEOUT, **kwargs,
 ) -> tuple[dict, dict]:
     """非流式调用 LLM API，返回 (message_dict, response_data)。"""
-    _log_request(messages, model, kwargs)
+    _log_request(messages, model, kwargs, base_url=getattr(client, '_base_url', ''))
     resp = client.chat.completions.create(
-        model=model, messages=messages, timeout=HTTP_TIMEOUT, **kwargs,
+        model=model, messages=messages, timeout=timeout, **kwargs,
     )
     msg = resp.choices[0].message
     msg_dict: dict = {"role": "assistant", "content": msg.content or ""}
@@ -306,6 +293,7 @@ def run_turn_with_tools(
     tools: list[dict],
     *,
     print_reasoning: bool = True,
+    timeout: int = DEFAULT_HTTP_TIMEOUT,
     workspace_root: str = None,
     context: dict = None,
 ) -> tuple[str, list[dict]]:
@@ -319,6 +307,7 @@ def run_turn_with_tools(
             tools=tools, tool_choice="auto",
             print_output=True,
             print_reasoning=print_reasoning,
+            timeout=timeout,
             extra_body={"reasoning_split": True},
         )
 

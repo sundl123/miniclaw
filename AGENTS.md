@@ -8,7 +8,7 @@
 
 **miniclaw** 是命令行 LLM 对话工具（通用 harness 框架），可通过 `pip install miniclaw` 安装后在任意目录使用 `miniclaw` 命令启动。底层模型可替换，当前默认接入 MiniMax API。核心能力包括：
 
-- **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量切换模型和 API 地址）。
+- **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量或 config.json 的 `llm` 配置切换模型和 API 地址）。
 - **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash` 六个工具，在 workspace 内读写文件和执行命令。
 - **Plan Mode**：面对复杂任务时进入只读规划阶段，只读 bash 命令自动放行，写操作被拦截。可通过 `.miniclaw/config.json` 扩展允许的 bash 命令。
 - **.skills 技能目录**：启动时自动扫描 workspace 下 `.miniclaw/skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `read` 读取 `.miniclaw/skills/<name>/SKILL.md` 使用技能。

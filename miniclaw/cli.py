@@ -7,10 +7,10 @@ import openai
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 
-from miniclaw.api import create_client, get_api_key, run_turn_with_tools
-from miniclaw.config import DEFAULT_MODEL
+from miniclaw.api import create_client, run_turn_with_tools
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
+from miniclaw.settings import get_llm_config
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
@@ -38,9 +38,8 @@ def _init_session(args: argparse.Namespace) -> dict:
         print(f"[首次运行] 已创建默认配置: {config_path}")
     setup_dev_logging()
     workspace = resolve_workspace(args.workspace)
-    api_key = get_api_key(workspace)
-    client = create_client(api_key)
-    model = os.environ.get("LLM_MODEL", DEFAULT_MODEL)
+    llm_cfg = get_llm_config(workspace)
+    client = create_client(llm_cfg["api_key"], llm_cfg["base_url"])
 
     skills_dir = os.path.join(workspace, ".miniclaw", "skills")
     skill_meta = scan_skills_metadata(skills_dir)
@@ -48,7 +47,8 @@ def _init_session(args: argparse.Namespace) -> dict:
 
     return {
         "client": client,
-        "model": model,
+        "model": llm_cfg["model"],
+        "timeout": llm_cfg["timeout"],
         "workspace": workspace,
         "system_prompt": system_prompt,
         "tools": get_tool_schemas(),
@@ -59,6 +59,7 @@ def _repl_loop(session: dict) -> None:
     """REPL 主循环：读取用户输入、处理内置命令、调用 API。"""
     client = session["client"]
     model = session["model"]
+    timeout = session["timeout"]
     workspace = session["workspace"]
     system_prompt = session["system_prompt"]
     tools = session["tools"]
@@ -110,8 +111,8 @@ def _repl_loop(session: dict) -> None:
             try:
                 reply, messages = run_turn_with_tools(
                     client, model, messages, tools,
-                    print_reasoning=True, workspace_root=workspace,
-                    context=context,
+                    print_reasoning=True, timeout=timeout,
+                    workspace_root=workspace, context=context,
                 )
                 print()
             except (openai.APIError, RuntimeError) as e:
@@ -126,8 +127,8 @@ def _repl_loop(session: dict) -> None:
         try:
             reply, messages = run_turn_with_tools(
                 client, model, messages, tools,
-                print_reasoning=True, workspace_root=workspace,
-                context=context,
+                print_reasoning=True, timeout=timeout,
+                workspace_root=workspace, context=context,
             )
             print()
         except (openai.APIError, RuntimeError) as e:

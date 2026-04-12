@@ -1,5 +1,10 @@
 {
-  "api_key": "",
+  "llm": {
+    "api_key": "",
+    "model": "",
+    "base_url": "",
+    "timeout": 300
+  },
   "plan_mode": {
     "allowed_bash_patterns": []
   }

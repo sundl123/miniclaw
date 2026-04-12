@@ -1,4 +1,4 @@
-"""配置常量：路径安全、API 地址与默认模型。"""
+"""配置常量：路径安全与 LLM 默认值。"""
 import os
 
 
@@ -11,14 +11,6 @@ def resolve_path(path: str, workspace_root: str) -> str:
     return abs_path
 
 
-BASE_URL = "https://api.minimaxi.com"
-OPENAI_BASE_URL = os.environ.get("LLM_BASE_URL", "").strip() or f"{BASE_URL}/v1"
+DEFAULT_BASE_URL = "https://api.minimaxi.com/v1"
 DEFAULT_MODEL = "MiniMax-M2.7"
-
-_raw_http_timeout = os.environ.get("LLM_HTTP_TIMEOUT", "").strip()
-try:
-    HTTP_TIMEOUT = int(_raw_http_timeout) if _raw_http_timeout else 300
-    if HTTP_TIMEOUT <= 0:
-        HTTP_TIMEOUT = 300
-except ValueError:
-    HTTP_TIMEOUT = 300
+DEFAULT_HTTP_TIMEOUT = 300

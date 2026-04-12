@@ -95,6 +95,12 @@ miniclaw 的文件分两级存放：
 
 ```json
 {
+  "llm": {
+    "api_key": "your_api_key",
+    "model": "MiniMax-M2.7",
+    "base_url": "https://api.minimaxi.com/v1",
+    "timeout": 300
+  },
   "plan_mode": {
     "allowed_bash_patterns": [
       "^firecrawl\\b",
@@ -104,15 +110,18 @@ miniclaw 的文件分两级存放：
 }
 ```
 
+`llm`：LLM 连接配置。所有字段均可通过同名环境变量覆盖（环境变量优先）。留空则使用默认值。
+
 `plan_mode.allowed_bash_patterns`：plan mode 下额外允许的 bash 命令（正则表达式列表）。内置白名单已包含 ls、cat、git log 等常用只读命令，此处用于添加项目特有的命令。
 
 ## 环境变量
 
 | 变量 | 说明 |
 |------|------|
-| `LLM_API_KEY` | LLM API Key（也可在 config.json 中设置 `api_key` 字段，环境变量优先） |
-| `LLM_MODEL` | 模型名，默认 `MiniMax-M2.7` |
-| `LLM_BASE_URL` | OpenAI 兼容 API 地址，可替换为其他供应商 |
+| `LLM_API_KEY` | LLM API Key（也可在 config.json 的 `llm.api_key` 中设置，环境变量优先） |
+| `LLM_MODEL` | 模型名，默认 `MiniMax-M2.7`（也可在 `llm.model` 中设置） |
+| `LLM_BASE_URL` | OpenAI 兼容 API 地址（也可在 `llm.base_url` 中设置） |
+| `LLM_HTTP_TIMEOUT` | HTTP 请求超时秒数，默认 300（也可在 `llm.timeout` 中设置） |
 | `MINICLAW_WORKSPACE` | 工作区目录，也可通过 `-w` 参数指定（CLI 参数优先）。未指定时默认为当前目录 |
 | `MINICLAW_DEV_LOG_DIR` | 自定义日志目录，默认 `~/.miniclaw/logs/` |
 
