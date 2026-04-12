@@ -10,6 +10,7 @@ from miniclaw.plan_mode import (
     check_plan_mode,
     get_plan_tool_schemas,
 )
+from miniclaw.ui import print_tool_call
 
 
 # ---------------------------------------------------------------------------
@@ -141,18 +142,18 @@ def _print_tool_invocation(name: str, args: dict) -> None:
     if name in ("read", "write", "edit"):
         p = (args.get("path") or "").strip()
         if p:
-            detail = f" path={p}"
+            detail = f"path={p}"
     elif name == "bash":
         cmd = (args.get("command") or "").strip()
         if cmd:
-            detail = f" command={cmd[:100]}{'…' if len(cmd) > 100 else ''}"
+            detail = f"command={cmd[:100]}{'…' if len(cmd) > 100 else ''}"
     elif name == "glob":
-        detail = f" pattern={args.get('pattern', '')}"
+        detail = f"pattern={args.get('pattern', '')}"
     elif name == "grep":
-        detail = f" pattern={args.get('pattern', '')} path={args.get('path', '.')}"
+        detail = f"pattern={args.get('pattern', '')} path={args.get('path', '.')}"
     elif name in PLAN_MODE_HANDLERS:
         pass
-    print(f"[调用工具] {name}{detail}", flush=True)
+    print_tool_call(name, detail)
 
 
 def execute_tool(name: str, args: dict, workspace_root: str = None,

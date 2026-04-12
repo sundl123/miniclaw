@@ -7,7 +7,7 @@ install: ## 从源码安装（pipx，隔离环境）
 	pipx install . --force
 
 dev: ## 开发模式安装（pip install -e .，可编辑）
-	pip install -e .
+	pip3 install -e .
 
 uninstall: ## 卸载（pipx uninstall）
 	pipx uninstall miniclaw

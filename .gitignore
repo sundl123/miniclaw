@@ -28,3 +28,4 @@ build/
 .miniclaw_logs/
 .miniclaw/
 .default_workspace/
+ai-references/

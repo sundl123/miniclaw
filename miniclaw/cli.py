@@ -7,13 +7,16 @@ import openai
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 
-from miniclaw.api import create_client, get_api_key, run_turn_with_tools
-from miniclaw.config import DEFAULT_MODEL
+from prompt_toolkit.formatted_text import HTML
+
+from miniclaw.api import create_client, run_turn_with_tools
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
+from miniclaw.settings import get_llm_config
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
+from miniclaw.ui import print_banner, print_error, print_status
 
 
 def _create_prompt_session() -> PromptSession:
@@ -38,20 +41,17 @@ def _init_session(args: argparse.Namespace) -> dict:
         print(f"[首次运行] 已创建默认配置: {config_path}")
     setup_dev_logging()
     workspace = resolve_workspace(args.workspace)
-    api_key = get_api_key(workspace)
-    client = create_client(api_key)
-    model = os.environ.get("MINIMAX_MODEL", DEFAULT_MODEL)
+    llm_cfg = get_llm_config(workspace)
+    client = create_client(llm_cfg["api_key"], llm_cfg["base_url"])
 
     skills_dir = os.path.join(workspace, ".miniclaw", "skills")
     skill_meta = scan_skills_metadata(skills_dir)
     system_prompt = build_system_prompt(skill_meta, workspace_root=workspace)
-    extra_system = os.environ.get("MINIMAX_SYSTEM", "").strip()
-    if extra_system:
-        system_prompt = system_prompt + "\n\n" + extra_system
 
     return {
         "client": client,
-        "model": model,
+        "model": llm_cfg["model"],
+        "timeout": llm_cfg["timeout"],
         "workspace": workspace,
         "system_prompt": system_prompt,
         "tools": get_tool_schemas(),
@@ -62,6 +62,7 @@ def _repl_loop(session: dict) -> None:
     """REPL 主循环：读取用户输入、处理内置命令、调用 API。"""
     client = session["client"]
     model = session["model"]
+    timeout = session["timeout"]
     workspace = session["workspace"]
     system_prompt = session["system_prompt"]
     tools = session["tools"]
@@ -72,16 +73,15 @@ def _repl_loop(session: dict) -> None:
 
     prompt_session = _create_prompt_session()
 
-    print(f"工作区: {workspace}")
-    print("miniclaw — 命令行 LLM 对话 + Code Execution + skills")
-    print("  /quit 退出 | /clear 清空历史 | /model 查看模型 | /plan 进入规划模式")
-    print("  Ctrl+J 换行 | ↑/↓ 历史记录 | Ctrl+C 取消输入 | Ctrl+D 退出")
-    print("-" * 50)
+    print_banner(model, workspace)
 
     while True:
         try:
-            mode_label = " [plan]" if context["mode"] == "plan" else ""
-            user_input = prompt_session.prompt(f"你{mode_label}: ").strip()
+            if context["mode"] == "plan":
+                prompt_text = HTML("<style fg='ansiyellow'>[plan]</style> <style fg='ansigreen'>❯</style> ")
+            else:
+                prompt_text = HTML("<style fg='ansigreen'>❯</style> ")
+            user_input = prompt_session.prompt(prompt_text).strip()
         except (EOFError, KeyboardInterrupt):
             print("\n再见。")
             break
@@ -94,18 +94,18 @@ def _repl_loop(session: dict) -> None:
         if user_input == "/clear":
             messages = [{"role": "system", "content": system_prompt}]
             context["mode"] = "agent"
-            print("[已清空对话历史]")
+            print_status("已清空对话历史")
             continue
         if user_input == "/model":
-            print(f"当前模型: {model}")
+            print_status(f"当前模型: {model}")
             continue
         if user_input == "/plan" or user_input.startswith("/plan "):
             if context["mode"] == "plan":
-                print("[已在 Plan Mode 中]")
+                print_status("已在 Plan Mode 中")
                 continue
             context["mode"] = "plan"
             instructions = get_plan_mode_instructions(plan_dir)
-            print(f"[已进入 Plan Mode，plan 目录: {plan_dir}/]")
+            print_status(f"已进入 Plan Mode，plan 目录: {plan_dir}/")
             description = user_input[5:].strip()
             content = (f"{instructions}\n\n用户需求：{description}"
                        if description else instructions)
@@ -113,14 +113,14 @@ def _repl_loop(session: dict) -> None:
             try:
                 reply, messages = run_turn_with_tools(
                     client, model, messages, tools,
-                    print_reasoning=True, workspace_root=workspace,
-                    context=context,
+                    print_reasoning=True, timeout=timeout,
+                    workspace_root=workspace, context=context,
                 )
                 print()
             except (openai.APIError, RuntimeError) as e:
                 label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
                         "API 错误" if isinstance(e, openai.APIError) else "错误"
-                print(f"\n[{label}] {e}\n", file=sys.stderr)
+                print_error(label, str(e))
                 messages.pop()
             continue
 
@@ -129,14 +129,14 @@ def _repl_loop(session: dict) -> None:
         try:
             reply, messages = run_turn_with_tools(
                 client, model, messages, tools,
-                print_reasoning=True, workspace_root=workspace,
-                context=context,
+                print_reasoning=True, timeout=timeout,
+                workspace_root=workspace, context=context,
             )
             print()
         except (openai.APIError, RuntimeError) as e:
             label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
                     "API 错误" if isinstance(e, openai.APIError) else "错误"
-            print(f"\n[{label}] {e}\n", file=sys.stderr)
+            print_error(label, str(e))
             messages.pop()
 
 

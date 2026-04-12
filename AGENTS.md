@@ -8,7 +8,7 @@
 
 **miniclaw** 是命令行 LLM 对话工具（通用 harness 框架），可通过 `pip install miniclaw` 安装后在任意目录使用 `miniclaw` 命令启动。底层模型可替换，当前默认接入 MiniMax API。核心能力包括：
 
-- **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量切换模型和 API 地址）。
+- **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量或 config.json 的 `llm` 配置切换模型和 API 地址）。
 - **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash` 六个工具，在 workspace 内读写文件和执行命令。
 - **Plan Mode**：面对复杂任务时进入只读规划阶段，只读 bash 命令自动放行，写操作被拦截。可通过 `.miniclaw/config.json` 扩展允许的 bash 命令。
 - **.skills 技能目录**：启动时自动扫描 workspace 下 `.miniclaw/skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `read` 读取 `.miniclaw/skills/<name>/SKILL.md` 使用技能。
@@ -22,7 +22,7 @@
 - 文件分两级存放：用户级（`~/.miniclaw/`，含 logs 和全局 config）和 workspace 级（`{cwd}/.miniclaw/`，含 plans 和 workspace config）。
 - workspace 默认为当前目录，可通过 `-w` 参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > CWD）；所有文件与 bash 的 cwd 均为 workspace，路径禁止 `..` 逃逸。
 
-**运行方式**：`MINIMAX_API_KEY=your_key miniclaw`（可附加 `-w /path/to/dir`）。详见 [README.md](README.md)。
+**运行方式**：`LLM_API_KEY=your_key miniclaw`（可附加 `-w /path/to/dir`）。详见 [README.md](README.md)。
 
 ---
 
