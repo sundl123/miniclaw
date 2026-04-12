@@ -132,10 +132,11 @@ _DEFAULT_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5MB
 _DEFAULT_LOG_BACKUP_COUNT = 3
 
 
-def get_log_config(workspace_root: str) -> dict:
+def get_log_config(workspace_root: str | None) -> dict:
     """解析日志配置，返回 {"max_bytes": int, "backup_count": int}。
 
-    优先级：config.json > 默认值。
+    优先级：config.json > 默认值。workspace_root 为 None 时直接返回默认值。
+
     配置文件示例::
 
         {
@@ -146,11 +147,18 @@ def get_log_config(workspace_root: str) -> dict:
         }
 
     Args:
-        workspace_root: 工作区目录，用于读取 config.json
+        workspace_root: 工作区目录，用于读取 config.json。None 时跳过配置加载。
 
     Returns:
         包含 max_bytes 和 backup_count 的字典
     """
+    # workspace_root 为 None 时直接返回默认值
+    if workspace_root is None:
+        return {
+            "max_bytes": _DEFAULT_LOG_MAX_BYTES,
+            "backup_count": _DEFAULT_LOG_BACKUP_COUNT,
+        }
+
     cfg = load_merged_config(workspace_root)
     log_cfg = cfg.get("logging", {})
     if not isinstance(log_cfg, dict):

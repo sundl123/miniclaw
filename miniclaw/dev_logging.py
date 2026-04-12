@@ -10,10 +10,6 @@ from miniclaw.dirs import get_log_dir
 
 DEV_LOGGER_NAME = "miniclaw.dev"
 
-# 日志轮转默认值
-_DEFAULT_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5MB
-_DEFAULT_LOG_BACKUP_COUNT = 3
-
 
 def get_dev_logger() -> logging.Logger:
     return logging.getLogger(DEV_LOGGER_NAME)
@@ -34,15 +30,11 @@ def setup_dev_logging(
     name = datetime.now().strftime("%Y%m%d-%H%M%S-%f") + ".log"
     path = os.path.join(root, name)
 
-    # 获取轮转配置
-    if workspace_root:
-        from miniclaw.settings import get_log_config
-        log_config = get_log_config(workspace_root)
-        max_bytes = log_config["max_bytes"]
-        backup_count = log_config["backup_count"]
-    else:
-        max_bytes = _DEFAULT_LOG_MAX_BYTES
-        backup_count = _DEFAULT_LOG_BACKUP_COUNT
+    # 获取轮转配置（get_log_config 内部已处理默认值）
+    from miniclaw.settings import get_log_config
+    log_config = get_log_config(workspace_root)
+    max_bytes = log_config["max_bytes"]
+    backup_count = log_config["backup_count"]
 
     logger = get_dev_logger()
     for h in logger.handlers[:]:
