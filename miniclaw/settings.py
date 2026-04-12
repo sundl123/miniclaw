@@ -125,3 +125,43 @@ def get_plan_allowed_patterns(workspace_root: str) -> list[re.Pattern]:
         except re.error as e:
             print(f"[警告] 正则编译失败: {p!r} — {e}")
     return patterns
+
+
+# 日志轮转默认配置
+_DEFAULT_LOG_MAX_BYTES = 5 * 1024 * 1024  # 5MB
+_DEFAULT_LOG_BACKUP_COUNT = 3
+
+
+def get_log_config(workspace_root: str) -> dict:
+    """解析日志配置，返回 {"max_bytes": int, "backup_count": int}。
+
+    优先级：config.json > 默认值。
+    配置文件示例::
+
+        {
+          "logging": {
+            "max_bytes": 10485760,
+            "backup_count": 5
+          }
+        }
+
+    Args:
+        workspace_root: 工作区目录，用于读取 config.json
+
+    Returns:
+        包含 max_bytes 和 backup_count 的字典
+    """
+    cfg = load_merged_config(workspace_root)
+    log_cfg = cfg.get("logging", {})
+    if not isinstance(log_cfg, dict):
+        log_cfg = {}
+
+    max_bytes = log_cfg.get("max_bytes")
+    if not isinstance(max_bytes, int) or max_bytes <= 0:
+        max_bytes = _DEFAULT_LOG_MAX_BYTES
+
+    backup_count = log_cfg.get("backup_count")
+    if not isinstance(backup_count, int) or backup_count < 0:
+        backup_count = _DEFAULT_LOG_BACKUP_COUNT
+
+    return {"max_bytes": max_bytes, "backup_count": backup_count}

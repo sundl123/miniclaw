@@ -34,13 +34,21 @@ def _create_prompt_session() -> PromptSession:
     )
 
 
+def _handle_api_error(e: Exception, messages: list[dict]) -> None:
+    """处理 API 调用异常，根据类型打印错误并回滚 messages。"""
+    label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
+            "API 错误" if isinstance(e, openai.APIError) else "错误"
+    print_error(label, str(e))
+    messages.pop()
+
+
 def _init_session(args: argparse.Namespace) -> dict:
     """初始化会话：日志、客户端、技能、system prompt、工具。返回会话配置 dict。"""
     config_path, created = ensure_user_config()
     if created:
         print(f"[首次运行] 已创建默认配置: {config_path}")
-    setup_dev_logging()
     workspace = resolve_workspace(args.workspace)
+    setup_dev_logging(workspace_root=workspace)
     llm_cfg = get_llm_config(workspace)
     client = create_client(llm_cfg["api_key"], llm_cfg["base_url"])
 
@@ -118,10 +126,7 @@ def _repl_loop(session: dict) -> None:
                 )
                 print()
             except (openai.APIError, RuntimeError) as e:
-                label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
-                        "API 错误" if isinstance(e, openai.APIError) else "错误"
-                print_error(label, str(e))
-                messages.pop()
+                _handle_api_error(e, messages)
             continue
 
         messages.append({"role": "user", "content": user_input})
@@ -134,10 +139,7 @@ def _repl_loop(session: dict) -> None:
             )
             print()
         except (openai.APIError, RuntimeError) as e:
-            label = "网络错误" if isinstance(e, openai.APIConnectionError) else \
-                    "API 错误" if isinstance(e, openai.APIError) else "错误"
-            print_error(label, str(e))
-            messages.pop()
+            _handle_api_error(e, messages)
 
 
 def _handle_init(args: argparse.Namespace) -> None:

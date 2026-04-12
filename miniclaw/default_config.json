@@ -10,5 +10,9 @@
       "^firecrawl\\b",
       "^curl\\s+-s"
     ]
+  },
+  "logging": {
+    "max_bytes": 5242880,
+    "backup_count": 3
   }
 }
