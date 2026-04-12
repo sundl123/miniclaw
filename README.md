@@ -187,8 +187,15 @@ miniclaw/
 │   ├── ui.py            # Terminal UI (rich)
 │   └── dev_logging.py   # Dev logging
 ├── tests/               # Unit tests
-└── docs/                # Design docs
+└── docs/design/         # Design docs
+    └── miniclaw-architecture-analysis.md
 ```
+
+## Design Documents
+
+| Document | Description |
+|----------|-------------|
+| [架构分析](docs/design/miniclaw-architecture-analysis.md) | 从 Agent Loop、Skill 机制、Tool 设计、Prompt Cache、Plan Mode 五个维度深入分析项目架构 |
 
 ## Running Tests
 
