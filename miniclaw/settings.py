@@ -7,6 +7,12 @@ import re
 import sys
 
 from miniclaw.config import DEFAULT_BASE_URL, DEFAULT_HTTP_TIMEOUT, DEFAULT_MODEL
+from miniclaw.context.config import (
+    AutoSummarizeConfig,
+    ContextConfig,
+    MicroCompactConfig,
+    SummarizeConfig,
+)
 from miniclaw.dirs import get_user_data_dir
 
 _CONFIG_FILENAME = "config.json"
@@ -125,3 +131,48 @@ def get_plan_allowed_patterns(workspace_root: str) -> list[re.Pattern]:
         except re.error as e:
             print(f"[警告] 正则编译失败: {p!r} — {e}")
     return patterns
+
+
+def get_context_config(workspace_root: str) -> ContextConfig:
+    """Load context management config with env overrides."""
+    raw = load_merged_config(workspace_root).get("context", {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    if os.environ.get("DISABLE_CONTEXT_COMPACT", "").strip() in ("1", "true", "yes"):
+        return ContextConfig(enabled=False)
+
+    mc_raw = raw.get("micro_compact", {}) if isinstance(raw.get("micro_compact"), dict) else {}
+    as_raw = raw.get("auto_summarize", {}) if isinstance(raw.get("auto_summarize"), dict) else {}
+    sum_raw = raw.get("summarize", {}) if isinstance(raw.get("summarize"), dict) else {}
+
+    window_env = os.environ.get("MINICLAW_CONTEXT_WINDOW", "").strip()
+    context_window = int(window_env) if window_env.isdigit() else int(raw.get("context_window_tokens", 200_000))
+
+    auto_summarize_enabled = as_raw.get("enabled", True)
+    if os.environ.get("DISABLE_AUTO_SUMMARIZE", "").strip() in ("1", "true", "yes"):
+        auto_summarize_enabled = False
+
+    return ContextConfig(
+        enabled=raw.get("enabled", True),
+        context_window_tokens=context_window,
+        reserve_output_tokens=int(raw.get("reserve_output_tokens", 8000)),
+        micro_compact=MicroCompactConfig(
+            enabled=mc_raw.get("enabled", True),
+            keep_recent_tool_results=int(mc_raw.get("keep_recent_tool_results", 3)),
+            keep_recent_turns=int(mc_raw.get("keep_recent_turns", 2)),
+            compact_reasoning_after_turns=int(mc_raw.get("compact_reasoning_after_turns", 1)),
+            placeholder_max_chars=int(mc_raw.get("placeholder_max_chars", 400)),
+            micro_compact_buffer_tokens=int(mc_raw.get("micro_compact_buffer_tokens", 8000)),
+        ),
+        auto_summarize=AutoSummarizeConfig(
+            enabled=auto_summarize_enabled,
+            threshold_buffer_tokens=int(as_raw.get("threshold_buffer_tokens", 12000)),
+            min_messages_before_summarize=int(as_raw.get("min_messages_before_summarize", 10)),
+            max_consecutive_failures=int(as_raw.get("max_consecutive_failures", 3)),
+        ),
+        summarize=SummarizeConfig(
+            keep_recent_messages=int(sum_raw.get("keep_recent_messages", 6)),
+            max_summary_output_tokens=int(sum_raw.get("max_summary_output_tokens", 4096)),
+        ),
+    )

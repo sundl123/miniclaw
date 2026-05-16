@@ -10,5 +10,28 @@
       "^firecrawl\\b",
       "^curl\\s+-s"
     ]
+  },
+  "context": {
+    "enabled": true,
+    "context_window_tokens": 200000,
+    "reserve_output_tokens": 8000,
+    "micro_compact": {
+      "enabled": true,
+      "keep_recent_tool_results": 3,
+      "keep_recent_turns": 2,
+      "compact_reasoning_after_turns": 1,
+      "placeholder_max_chars": 400,
+      "micro_compact_buffer_tokens": 8000
+    },
+    "auto_summarize": {
+      "enabled": true,
+      "threshold_buffer_tokens": 12000,
+      "min_messages_before_summarize": 10,
+      "max_consecutive_failures": 3
+    },
+    "summarize": {
+      "keep_recent_messages": 6,
+      "max_summary_output_tokens": 4096
+    }
   }
 }
