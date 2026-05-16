@@ -61,6 +61,96 @@ def _parse_summary(text: str) -> str | None:
     return text.strip() if text.strip() else None
 
 
+def _tool_call_id(tc: dict) -> str:
+    return tc.get("id") or tc.get("tool_use_id") or ""
+
+
+def _assistant_has_tool_id(msg: dict, tool_call_id: str) -> bool:
+    if msg.get("role") != "assistant" or not tool_call_id:
+        return False
+    for tc in msg.get("tool_calls") or []:
+        if _tool_call_id(tc) == tool_call_id:
+            return True
+    return False
+
+
+def prepare_tail_for_rebuild(non_system: list[dict], keep: int) -> tuple[list[dict], list[dict]]:
+    """Split messages into (to_summarize, tail) with valid tool pairings in tail.
+
+    Naive ``non_system[-keep:]`` can leave tool messages whose parent assistant
+    was summarized away, which breaks OpenAI-compatible APIs.
+    """
+    if len(non_system) <= keep:
+        return [], list(non_system)
+
+    start = len(non_system) - keep
+
+    # Expand backward so leading tool messages include their assistant parent.
+    while start > 0 and non_system[start].get("role") == "tool":
+        tid = non_system[start].get("tool_call_id") or ""
+        parent_idx = None
+        for i in range(start - 1, -1, -1):
+            if _assistant_has_tool_id(non_system[i], tid):
+                parent_idx = i
+                break
+        if parent_idx is None:
+            start += 1
+        else:
+            start = parent_idx
+
+    to_summarize = list(non_system[:start])
+    tail = list(non_system[start:])
+
+    # Drop tool messages with no matching assistant in tail.
+    assistant_ids: set[str] = set()
+    for msg in tail:
+        if msg.get("role") == "assistant":
+            for tc in msg.get("tool_calls") or []:
+                tid = _tool_call_id(tc)
+                if tid:
+                    assistant_ids.add(tid)
+
+    filtered: list[dict] = []
+    for msg in tail:
+        if msg.get("role") == "tool":
+            if msg.get("tool_call_id") not in assistant_ids:
+                continue
+        filtered.append(msg)
+
+    # Strip tool_calls from assistant when matching tool messages are missing.
+    result: list[dict] = []
+    for i, msg in enumerate(filtered):
+        if msg.get("role") != "assistant" or not msg.get("tool_calls"):
+            result.append(msg)
+            continue
+
+        following_ids: set[str] = set()
+        for j in range(i + 1, len(filtered)):
+            role = filtered[j].get("role")
+            if role in ("user", "assistant"):
+                break
+            if role == "tool":
+                tid = filtered[j].get("tool_call_id")
+                if tid:
+                    following_ids.add(tid)
+
+        complete = [
+            tc for tc in msg["tool_calls"]
+            if _tool_call_id(tc) in following_ids
+        ]
+        if not complete:
+            cleaned = {k: v for k, v in msg.items() if k != "tool_calls"}
+            result.append(cleaned)
+        elif len(complete) < len(msg["tool_calls"]):
+            cleaned = dict(msg)
+            cleaned["tool_calls"] = complete
+            result.append(cleaned)
+        else:
+            result.append(msg)
+
+    return to_summarize, result
+
+
 def _rebuild_messages(
     system_msg: dict,
     summary_text: str,
@@ -99,8 +189,9 @@ def summarize_conversation(
     if len(non_system) <= keep:
         return messages, False
 
-    to_summarize = non_system[:-keep]
-    tail = non_system[-keep:]
+    to_summarize, tail = prepare_tail_for_rebuild(non_system, keep)
+    if not tail or not to_summarize:
+        return messages, False
 
     # Pre-compact old content to reduce summarize request size
     working = [system_msg, *to_summarize]
