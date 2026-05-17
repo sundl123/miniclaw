@@ -13,6 +13,7 @@ from miniclaw.context.config import (
     MicroCompactConfig,
     SummarizeConfig,
 )
+from miniclaw.tools_config import ReadToolConfig, ToolsConfig
 from miniclaw.dirs import get_user_data_dir
 
 _CONFIG_FILENAME = "config.json"
@@ -175,4 +176,32 @@ def get_context_config(workspace_root: str) -> ContextConfig:
             keep_recent_messages=int(sum_raw.get("keep_recent_messages", 6)),
             max_summary_output_tokens=int(sum_raw.get("max_summary_output_tokens", 4096)),
         ),
+    )
+
+
+def get_tools_config(workspace_root: str) -> ToolsConfig:
+    """Load tool output limit config with optional env overrides."""
+    raw = load_merged_config(workspace_root).get("tools", {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    read_raw = raw.get("read", {}) if isinstance(raw.get("read"), dict) else {}
+
+    max_file_bytes = int(read_raw.get("max_file_bytes", 262144))
+    bytes_env = os.environ.get("MINICLAW_READ_MAX_FILE_BYTES", "").strip()
+    if bytes_env.isdigit():
+        max_file_bytes = int(bytes_env)
+
+    max_tool_result_chars = int(raw.get("max_tool_result_chars", 100_000))
+    chars_env = os.environ.get("MINICLAW_TOOL_MAX_RESULT_CHARS", "").strip()
+    if chars_env.isdigit():
+        max_tool_result_chars = int(chars_env)
+
+    return ToolsConfig(
+        read=ReadToolConfig(
+            max_file_bytes=max_file_bytes,
+            max_output_tokens=int(read_raw.get("max_output_tokens", 8000)),
+        ),
+        max_tool_result_chars=max_tool_result_chars,
+        max_glob_files=int(raw.get("max_glob_files", 500)),
     )
