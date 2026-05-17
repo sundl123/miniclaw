@@ -1,6 +1,7 @@
 """Orchestrate micro-compaction and summarization."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Optional
 
 from openai import OpenAI
@@ -14,6 +15,8 @@ from miniclaw.context.tokens import (
     update_usage_from_response,
 )
 
+CompactProgressCallback = Callable[[str], None]
+
 
 def init_ctx_mgmt(context: Optional[dict]) -> dict:
     """Ensure context['_ctx_mgmt'] exists and return it."""
@@ -21,7 +24,6 @@ def init_ctx_mgmt(context: Optional[dict]) -> dict:
         context = {}
     mgmt = context.setdefault("_ctx_mgmt", {})
     mgmt.setdefault("last_prompt_tokens", None)
-    mgmt.setdefault("pending_summarize", False)
     mgmt.setdefault("compacting", False)
     mgmt.setdefault("consecutive_summarize_failures", 0)
     mgmt.setdefault("auto_summarize_disabled", False)
@@ -35,12 +37,70 @@ def get_ctx_mgmt(context: Optional[dict]) -> dict:
     return init_ctx_mgmt(context)
 
 
-def manage_messages(
+def _notify_progress(
+    on_progress: CompactProgressCallback | None,
+    phase: str,
+) -> None:
+    if on_progress is not None:
+        on_progress(phase)
+
+
+def _try_auto_summarize(
+    client: OpenAI,
+    model: str,
     messages: list[dict],
     cfg: ContextConfig,
     context: Optional[dict],
+    *,
+    timeout: int = 300,
+    on_progress: CompactProgressCallback | None = None,
 ) -> list[dict]:
-    """Run before each chat_stream: micro-compact + set pending_summarize."""
+    """Run full summarization when over threshold. Returns updated messages."""
+    ctx = get_ctx_mgmt(context)
+    if ctx.get("compacting"):
+        return messages
+
+    if not cfg.auto_summarize.enabled or ctx.get("auto_summarize_disabled"):
+        return messages
+
+    thresholds = get_thresholds(cfg)
+    tokens = get_estimated_tokens(messages, ctx)
+    if tokens < thresholds.auto_summarize_threshold:
+        return messages
+    if len(messages) < cfg.auto_summarize.min_messages_before_summarize:
+        return messages
+
+    ctx["compacting"] = True
+    _notify_progress(on_progress, "start")
+    try:
+        new_messages, ok = summarize_conversation(
+            client, model, messages, cfg, timeout=timeout,
+        )
+        if ok:
+            ctx["consecutive_summarize_failures"] = 0
+            ctx["last_prompt_tokens"] = None
+            _notify_progress(on_progress, "done")
+            return new_messages
+        ctx["consecutive_summarize_failures"] = ctx.get("consecutive_summarize_failures", 0) + 1
+        if ctx["consecutive_summarize_failures"] >= cfg.auto_summarize.max_consecutive_failures:
+            ctx["auto_summarize_disabled"] = True
+        _notify_progress(on_progress, "failed")
+        return messages
+    finally:
+        ctx["compacting"] = False
+
+
+def manage_messages(
+    client: OpenAI,
+    model: str,
+    messages: list[dict],
+    cfg: ContextConfig,
+    context: Optional[dict],
+    *,
+    timeout: int = 300,
+    on_compact_progress: CompactProgressCallback | None = None,
+) -> list[dict]:
+    """Before each chat_stream: micro-compact, then auto-summarize if over threshold."""
     if not cfg.enabled:
         return messages
 
@@ -59,55 +119,12 @@ def manage_messages(
         ctx["last_compact_count"] = n
         tokens = estimate_messages_tokens(messages)
 
-    if (
-        cfg.auto_summarize.enabled
-        and not ctx.get("auto_summarize_disabled")
-        and tokens >= thresholds.auto_summarize_threshold
-        and len(messages) >= cfg.auto_summarize.min_messages_before_summarize
-    ):
-        ctx["pending_summarize"] = True
-
+    messages = _try_auto_summarize(
+        client, model, messages, cfg, context,
+        timeout=timeout,
+        on_progress=on_compact_progress,
+    )
     return messages
-
-
-def manage_messages_end_of_turn(
-    client: OpenAI,
-    model: str,
-    messages: list[dict],
-    cfg: ContextConfig,
-    context: Optional[dict],
-    *,
-    timeout: int = 300,
-) -> list[dict]:
-    """Run at end of run_turn_with_tools: execute pending auto-summarize."""
-    if not cfg.enabled:
-        return messages
-
-    ctx = get_ctx_mgmt(context)
-    if ctx.get("compacting") or not ctx.get("pending_summarize"):
-        ctx["pending_summarize"] = False
-        return messages
-
-    if not cfg.auto_summarize.enabled or ctx.get("auto_summarize_disabled"):
-        ctx["pending_summarize"] = False
-        return messages
-
-    ctx["compacting"] = True
-    ctx["pending_summarize"] = False
-    try:
-        new_messages, ok = summarize_conversation(
-            client, model, messages, cfg, timeout=timeout,
-        )
-        if ok:
-            ctx["consecutive_summarize_failures"] = 0
-            ctx["last_prompt_tokens"] = None
-            return new_messages
-        ctx["consecutive_summarize_failures"] = ctx.get("consecutive_summarize_failures", 0) + 1
-        if ctx["consecutive_summarize_failures"] >= cfg.auto_summarize.max_consecutive_failures:
-            ctx["auto_summarize_disabled"] = True
-        return messages
-    finally:
-        ctx["compacting"] = False
 
 
 def manual_compact(
@@ -119,10 +136,12 @@ def manual_compact(
     *,
     extra_instructions: str = "",
     timeout: int = 300,
+    on_compact_progress: CompactProgressCallback | None = None,
 ) -> tuple[list[dict], bool]:
     """User-triggered /compact."""
     ctx = get_ctx_mgmt(context)
     ctx["compacting"] = True
+    _notify_progress(on_compact_progress, "start")
     try:
         new_messages, ok = summarize_conversation(
             client, model, messages, cfg,
@@ -132,7 +151,9 @@ def manual_compact(
         if ok:
             ctx["consecutive_summarize_failures"] = 0
             ctx["last_prompt_tokens"] = None
-            ctx["pending_summarize"] = False
+            _notify_progress(on_compact_progress, "done")
+        else:
+            _notify_progress(on_compact_progress, "failed")
         return new_messages, ok
     finally:
         ctx["compacting"] = False
@@ -155,7 +176,7 @@ def format_context_status(
         f"Auto-summarize threshold: {thresholds.auto_summarize_threshold:,}",
         f"Warning threshold: {thresholds.warning_threshold:,}",
         f"Compacted items: {compacted}",
-        f"Pending summarize: {ctx.get('pending_summarize', False)}",
+        f"Compacting: {ctx.get('compacting', False)}",
         f"Auto-summarize disabled: {ctx.get('auto_summarize_disabled', False)}",
         f"Messages: {len(messages)}",
     ]

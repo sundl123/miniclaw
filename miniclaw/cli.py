@@ -17,7 +17,7 @@ from miniclaw.context import format_context_status, manual_compact, init_ctx_mgm
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
-from miniclaw.ui import print_banner, print_error, print_status
+from miniclaw.ui import print_banner, print_compact_progress, print_error, print_status
 
 
 def _create_prompt_session() -> PromptSession:
@@ -113,6 +113,7 @@ def _repl_loop(session: dict) -> None:
             new_messages, ok = manual_compact(
                 client, model, messages, context_config, context,
                 extra_instructions=extra, timeout=timeout,
+                on_compact_progress=print_compact_progress,
             )
             if ok:
                 messages = new_messages
@@ -137,6 +138,7 @@ def _repl_loop(session: dict) -> None:
                     print_reasoning=True, timeout=timeout,
                     workspace_root=workspace, context=context,
                     context_config=context_config,
+                    on_compact_progress=print_compact_progress,
                 )
                 print()
             except (openai.APIError, RuntimeError) as e:
@@ -154,6 +156,7 @@ def _repl_loop(session: dict) -> None:
                 print_reasoning=True, timeout=timeout,
                 workspace_root=workspace, context=context,
                 context_config=context_config,
+                on_compact_progress=print_compact_progress,
             )
             print()
         except (openai.APIError, RuntimeError) as e:

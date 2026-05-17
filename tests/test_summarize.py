@@ -6,9 +6,11 @@ from miniclaw.context.config import ContextConfig, SummarizeConfig
 from miniclaw.context.summarize import (
     summarize_conversation,
     _parse_summary,
+    _strip_non_summary_blocks,
+    _is_valid_summary,
     prepare_tail_for_rebuild,
 )
-from miniclaw.context.manage import manage_messages, manage_messages_end_of_turn, init_ctx_mgmt
+from miniclaw.context.manage import manage_messages, init_ctx_mgmt
 
 
 class TestPrepareTail(unittest.TestCase):
@@ -76,6 +78,65 @@ class TestParseSummary(unittest.TestCase):
         text = "<analysis>x</analysis><summary>Hello summary</summary>"
         self.assertEqual(_parse_summary(text), "Hello summary")
 
+    def test_strips_thinking_before_parse(self):
+        raw = (
+            "<think>internal notes</think>\n"
+            "<analysis>draft</analysis>\n"
+            "<summary>1. User intent: Do work.\n"
+            "2. Key files/code: foo.ts\n"
+            "3. Errors and fixes: none\n"
+            "4. Completed work: done\n"
+            "5. Pending tasks: none\n"
+            "6. Next step: continue</summary>"
+        )
+        parsed = _parse_summary(raw)
+        self.assertIsNotNone(parsed)
+        self.assertIn("User intent", parsed)
+        self.assertNotIn("internal notes", parsed)
+
+    def test_truncated_summary_without_close_tag(self):
+        raw = (
+            "<think>x</think>"
+            "<summary>1. User intent: test\n2. Key files/code: a.py"
+        )
+        parsed = _parse_summary(raw)
+        self.assertIn("User intent", parsed)
+        self.assertNotIn("redacted_thinking", parsed.lower())
+
+    def test_no_summary_tag_returns_none(self):
+        self.assertIsNone(_parse_summary("<think>only thinking</think>"))
+
+    def test_strip_non_summary_blocks(self):
+        text = "<thinking>a</thinking> rest <analysis>b</analysis> tail"
+        self.assertEqual(_strip_non_summary_blocks(text), "rest  tail")
+
+    def test_rejects_template_echo(self):
+        placeholder = (
+            "1. User intent: ...\n2. Key files/code: ...\n"
+            "3. Errors and fixes: ...\n4. Completed work: ...\n"
+            "5. Pending tasks: ...\n6. Next step: ..."
+        )
+        self.assertFalse(_is_valid_summary(placeholder))
+
+    def test_rejects_leaked_thinking_markers(self):
+        leaked = (
+            "1. User intent: x\n2. Key files/code: y\n3. Errors and fixes: none\n"
+            "4. Completed work: z\n5. Pending tasks: none\n6. Next step: n\n"
+            "<thinking>oops</thinking>"
+        )
+        self.assertFalse(_is_valid_summary(leaked))
+
+    def test_accepts_real_summary(self):
+        real = (
+            "1. User intent: Summarize the claude-code repo.\n"
+            "2. Key files/code: README.md describes a security research snapshot.\n"
+            "3. Errors and fixes: none\n"
+            "4. Completed work: Explored with bash/glob and read README.\n"
+            "5. Pending tasks: none\n"
+            "6. Next step: N/A"
+        )
+        self.assertTrue(_is_valid_summary(real))
+
 
 class TestSummarize(unittest.TestCase):
     def test_rebuilds_messages_on_success(self):
@@ -90,13 +151,18 @@ class TestSummarize(unittest.TestCase):
         client = MagicMock()
         with patch("miniclaw.api.chat_raw") as mock_raw:
             mock_raw.return_value = (
-                {"role": "assistant", "content": "<summary>Compacted</summary>"},
+                {"role": "assistant", "content": (
+                    "<summary>1. User intent: Test old message.\n"
+                    "2. Key files/code: none\n3. Errors and fixes: none\n"
+                    "4. Completed work: Discussed prior topic.\n"
+                    "5. Pending tasks: none\n6. Next step: recent</summary>"
+                )},
                 {},
             )
             new_msgs, ok = summarize_conversation(client, "m", messages, cfg)
         self.assertTrue(ok)
         self.assertTrue(any(m.get("is_compact_summary") for m in new_msgs))
-        self.assertEqual(new_msgs[-1]["content"], "last")
+        self.assertEqual(new_msgs[-1]["content"], "last")  # tail preserved
 
     def test_failure_returns_original(self):
         cfg = ContextConfig(summarize=SummarizeConfig(keep_recent_messages=2))
@@ -113,9 +179,31 @@ class TestSummarize(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(new_msgs, messages)
 
+    def test_rejects_raw_without_summary_block(self):
+        cfg = ContextConfig(summarize=SummarizeConfig(keep_recent_messages=2))
+        messages = [
+            {"role": "system", "content": "s"},
+            {"role": "user", "content": "a"},
+            {"role": "assistant", "content": "b"},
+            {"role": "user", "content": "c"},
+            {"role": "assistant", "content": "d"},
+        ]
+        client = MagicMock()
+        with patch("miniclaw.api.chat_raw") as mock_raw:
+            mock_raw.return_value = (
+                {"role": "assistant", "content": (
+                    "<think>long internal</think>"
+                    "<analysis>notes</analysis>"
+                )},
+                {},
+            )
+            new_msgs, ok = summarize_conversation(client, "m", messages, cfg)
+        self.assertFalse(ok)
+        self.assertEqual(new_msgs, messages)
 
-class TestManagePending(unittest.TestCase):
-    def test_sets_pending_not_summarize_in_loop(self):
+
+class TestManageImmediateSummarize(unittest.TestCase):
+    def test_summarizes_immediately_when_over_threshold(self):
         cfg = ContextConfig(
             context_window_tokens=1000,
             reserve_output_tokens=100,
@@ -128,12 +216,34 @@ class TestManagePending(unittest.TestCase):
         )
         ctx = {}
         init_ctx_mgmt(ctx)
+        client = MagicMock()
         messages = [{"role": "system", "content": "s"}]
         for i in range(20):
             messages.append({"role": "user", "content": "x" * 200})
             messages.append({"role": "assistant", "content": "y" * 200})
-        manage_messages(messages, cfg, ctx)
-        self.assertTrue(ctx["_ctx_mgmt"].get("pending_summarize"))
+        compacted = [{"role": "system", "content": "s"}, {"role": "user", "content": "summary"}]
+        progress: list[str] = []
+
+        with patch(
+            "miniclaw.context.manage.summarize_conversation",
+            return_value=(compacted, True),
+        ) as mock_sum:
+            result = manage_messages(
+                client, "m", messages, cfg, ctx,
+                on_compact_progress=progress.append,
+            )
+        mock_sum.assert_called_once()
+        self.assertEqual(result, compacted)
+        self.assertEqual(progress, ["start", "done"])
+
+    def test_skips_when_compacting_flag_set(self):
+        cfg = ContextConfig(enabled=True)
+        ctx = {"_ctx_mgmt": {"compacting": True}}
+        client = MagicMock()
+        with patch("miniclaw.context.manage.summarize_conversation") as mock_sum:
+            result = manage_messages(client, "m", [{"role": "user", "content": "hi"}], cfg, ctx)
+        mock_sum.assert_not_called()
+        self.assertEqual(len(result), 1)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 import json
 import time
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import Optional
 
 from openai import OpenAI
@@ -9,7 +10,6 @@ from openai import OpenAI
 from miniclaw.config import DEFAULT_BASE_URL, DEFAULT_HTTP_TIMEOUT, DEFAULT_MODEL
 from miniclaw.context import (
     manage_messages,
-    manage_messages_end_of_turn,
     record_usage,
     init_ctx_mgmt,
 )
@@ -304,6 +304,7 @@ def run_turn_with_tools(
     workspace_root: str = None,
     context: dict = None,
     context_config: Optional[ContextConfig] = None,
+    on_compact_progress: Optional[Callable[[str], None]] = None,
 ) -> tuple[str, list[dict]]:
     """带 tool 的对话循环：流式请求 → 若有 tool_calls 则执行并追加消息 → 再请求，直到无 tool_calls。
 
@@ -315,7 +316,11 @@ def run_turn_with_tools(
 
     while True:
         if cfg is not None:
-            messages = manage_messages(messages, cfg, context)
+            messages = manage_messages(
+                client, model, messages, cfg, context,
+                timeout=timeout,
+                on_compact_progress=on_compact_progress,
+            )
 
         message, usage = chat_stream(
             client, messages, model=model,
@@ -333,10 +338,6 @@ def run_turn_with_tools(
         messages.append(message)
 
         if not tool_calls:
-            if cfg is not None:
-                messages = manage_messages_end_of_turn(
-                    client, model, messages, cfg, context, timeout=timeout,
-                )
             return (message.get("content") or "").strip(), messages
 
         if (message.get("content") or "").strip():

@@ -16,18 +16,16 @@ _SUMMARY_USER_TEMPLATE = """CRITICAL: Respond with TEXT ONLY. Do NOT call any to
 
 Summarize the conversation below for continuation in a new session.
 
-Output format:
-<analysis>
-(brief internal notes — will be discarded)
-</analysis>
-<summary>
-1. User intent: ...
-2. Key files/code: ...
-3. Errors and fixes: ...
-4. Completed work: ...
-5. Pending tasks: ...
-6. Next step: ... (quote the most recent user message verbatim if possible)
-</summary>
+Write an <analysis> block (brief notes), then a <summary> block with six numbered sections.
+Each section MUST contain concrete facts from the conversation — never use "..." or placeholder text.
+
+Required sections inside <summary>:
+1. User intent: (what the user asked for)
+2. Key files/code: (paths, modules, snippets mentioned)
+3. Errors and fixes: (errors encountered and how they were resolved, or "none")
+4. Completed work: (what was done)
+5. Pending tasks: (what remains, or "none")
+6. Next step: (quote the latest user message verbatim when possible)
 
 {extra}
 
@@ -44,7 +42,7 @@ def _messages_to_text(messages: list[dict]) -> str:
             continue
         content = msg.get("content") or ""
         if isinstance(content, str) and content:
-            parts.append(f"[{role}]\n{content}")
+            parts.append(f"[{role}]\n{content[:8000]}")
         if msg.get("tool_calls"):
             for tc in msg["tool_calls"]:
                 fn = tc.get("function") or {}
@@ -54,11 +52,61 @@ def _messages_to_text(messages: list[dict]) -> str:
     return "\n\n".join(parts)
 
 
+_STRIP_BLOCK_PATTERNS = (
+    r"<think>.*?</think>",
+    r"<thinking>.*?</thinking>",
+    r"<analysis>.*?</analysis>",
+)
+
+
+def _strip_non_summary_blocks(text: str) -> str:
+    """Remove thinking/analysis drafts before parsing summary."""
+    cleaned = text
+    for pattern in _STRIP_BLOCK_PATTERNS:
+        cleaned = re.sub(pattern, "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+    return cleaned.strip()
+
+
 def _parse_summary(text: str) -> str | None:
-    m = re.search(r"<summary>\s*(.*?)\s*</summary>", text, re.DOTALL | re.IGNORECASE)
+    """Extract summary body; never fall back to full raw on parse failure."""
+    cleaned = _strip_non_summary_blocks(text)
+    if not cleaned:
+        return None
+
+    m = re.search(
+        r"<summary>\s*(.*?)\s*</summary>",
+        cleaned,
+        re.DOTALL | re.IGNORECASE,
+    )
     if m:
-        return m.group(1).strip()
-    return text.strip() if text.strip() else None
+        body = m.group(1).strip()
+        return body if body else None
+
+    open_m = re.search(r"<summary>\s*", cleaned, re.IGNORECASE)
+    if open_m:
+        body = cleaned[open_m.end() :].strip()
+        return body if body else None
+
+    return None
+
+
+def _is_valid_summary(summary: str) -> bool:
+    """Reject empty summaries, template echoes, or leaked thinking tags."""
+    text = summary.strip()
+    if len(text) < 80:
+        return False
+    if re.search(
+        r"</?\s*(?:redacted_thinking|thinking|analysis)\s*>",
+        text,
+        re.IGNORECASE,
+    ):
+        return False
+    # MiniMax sometimes copies the old template literally.
+    if re.search(r"User intent:\s*\.\.\.", text, re.IGNORECASE):
+        return False
+    if text.count("...") >= 4 and len(text) < 400:
+        return False
+    return True
 
 
 def _tool_call_id(tc: dict) -> str:
@@ -220,7 +268,7 @@ def summarize_conversation(
         )
         raw = (msg.get("content") or "").strip()
         summary = _parse_summary(raw)
-        if not summary:
+        if not summary or not _is_valid_summary(summary):
             return messages, False
         return _rebuild_messages(system_msg, summary, tail), True
     except Exception:
