@@ -53,8 +53,20 @@ class TestMicroCompact(unittest.TestCase):
         n = micro_compact(msgs, _cfg())
         self.assertGreater(n, 0)
         self.assertTrue(msgs[3].get("_compacted"))
-        self.assertIn("[compacted tool result]", msgs[3]["content"])
+        content = msgs[3]["content"]
+        self.assertTrue(content.startswith("[compacted]"))
+        self.assertIn("read", content)
+        self.assertIn("tokens", content)
+        self.assertIn("re-invoke read", content)
+        self.assertNotIn("args:", content)
+        self.assertNotIn('"path": "a.py"', content)
+        self.assertNotIn("\n", content)
         self.assertNotIn("_compacted", msgs[5])  # recent tool result kept
+
+    def test_placeholder_one_line_format(self):
+        msgs = self._read_exchange("a.py", "x" * 500)
+        micro_compact(msgs, _cfg())
+        self.assertNotIn("\n", msgs[3]["content"])
 
     def test_write_compacts_arguments_not_short_result(self):
         content = "y" * 500

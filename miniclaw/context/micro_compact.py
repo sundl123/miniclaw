@@ -42,26 +42,9 @@ def _parse_arguments(args_str: str) -> dict:
         return {}
 
 
-def _format_result_placeholder(
-    tool_name: str,
-    args: dict,
-    original_content: str,
-) -> str:
-    size = len(original_content)
+def _format_result_placeholder(tool_name: str, original_content: str) -> str:
     est = estimate_text_tokens(original_content)
-    args_line = json.dumps(args, ensure_ascii=False)
-    hint = "Content removed from context. Re-invoke the tool if you need exact text."
-    if tool_name == "write":
-        hint = "File written to disk. Use read to view content if needed."
-    elif tool_name == "edit":
-        hint = "Edit applied on disk. Use read to view file if needed."
-    return (
-        f"[compacted tool result]\n"
-        f"tool: {tool_name}\n"
-        f"args: {args_line}\n"
-        f"original_size: ~{size} chars (~{est} tokens)\n"
-        f"hint: {hint}"
-    )
+    return f"[compacted] {tool_name} ~{est} tokens — re-invoke {tool_name} if needed"
 
 
 def _compact_arguments(tool_name: str, args: dict, policy: CompactPolicy) -> dict:
@@ -196,8 +179,7 @@ def micro_compact(messages: list[dict], cfg: ContextConfig) -> int:
             if not policy.compact_output:
                 continue
 
-            args = _parse_arguments((tc.get("function") or {}).get("arguments", "{}"))
-            msg["content"] = _format_result_placeholder(tool_name, args, content)
+            msg["content"] = _format_result_placeholder(tool_name, content)
             msg["_compacted"] = True
             compacted += 1
 
