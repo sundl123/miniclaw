@@ -6,9 +6,11 @@ from unittest.mock import patch, MagicMock
 
 from miniclaw.api import (
     chat, chat_raw, chat_stream, create_client,
+    run_turn_with_tools,
     _execute_tool_call, _build_message, _consume_stream,
     _StreamResult, _StreamPrinter,
 )
+from miniclaw.context.config import ContextConfig
 
 
 def _make_mock_client(content=" Hello ", tool_calls=None):
@@ -83,6 +85,84 @@ class TestChatRaw(unittest.TestCase):
         msg, _ = chat_raw(client, [])
         self.assertIn("tool_calls", msg)
         self.assertEqual(msg["tool_calls"][0]["function"]["name"], "bash")
+
+
+class TestRunTurnWithContext(unittest.TestCase):
+    def test_manage_messages_called_before_stream(self):
+        usage_obj = MagicMock()
+        usage_obj.prompt_tokens = 100
+        usage_obj.completion_tokens = 10
+        usage_obj.prompt_tokens_details = None
+        chunks = [
+            _FakeChunk(delta=_FakeDelta(content="done")),
+            _FakeChunk(usage=usage_obj),
+        ]
+        client = MagicMock()
+        client.chat.completions.create.return_value = iter(chunks)
+        cfg = ContextConfig(enabled=True, context_window_tokens=500, reserve_output_tokens=50)
+        ctx = {}
+        progress: list[str] = []
+
+        def _manage(client, model, msgs, c, x, **kwargs):
+            if kwargs.get("on_compact_progress"):
+                kwargs["on_compact_progress"]("start")
+                kwargs["on_compact_progress"]("done")
+            return msgs
+
+        with patch("miniclaw.api.manage_messages", side_effect=_manage) as mock_manage:
+            reply, _ = run_turn_with_tools(
+                client, "model",
+                [{"role": "user", "content": "hi"}],
+                [],
+                print_reasoning=False,
+                context=ctx,
+                context_config=cfg,
+                on_compact_progress=progress.append,
+            )
+        self.assertEqual(reply, "done")
+        mock_manage.assert_called()
+        self.assertEqual(progress, ["start", "done"])
+
+    def test_tool_loop_calls_manage_each_iteration(self):
+        """manage_messages runs before each chat_stream (CC-style), not only at turn end."""
+        usage_obj = MagicMock()
+        usage_obj.prompt_tokens = 100
+        usage_obj.completion_tokens = 10
+        usage_obj.prompt_tokens_details = None
+
+        stream1 = [
+            _FakeChunk(delta=_FakeDelta(
+                content="",
+                tool_calls=[
+                    _FakeToolCallDelta(
+                        0, id="call_1", name="bash",
+                        arguments='{"command": "ls"}',
+                    ),
+                ],
+            )),
+            _FakeChunk(usage=usage_obj),
+        ]
+        stream2 = [
+            _FakeChunk(delta=_FakeDelta(content="final")),
+            _FakeChunk(usage=usage_obj),
+        ]
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [iter(stream1), iter(stream2)]
+        cfg = ContextConfig(enabled=True, context_window_tokens=500, reserve_output_tokens=50)
+        ctx = {}
+
+        with patch("miniclaw.api.manage_messages", side_effect=lambda *a, **k: a[2]) as mock_manage:
+            with patch("miniclaw.api._execute_tool_call", return_value="ok"):
+                reply, _ = run_turn_with_tools(
+                    client, "model",
+                    [{"role": "user", "content": "hi"}],
+                    [{"type": "function", "function": {"name": "bash"}}],
+                    print_reasoning=False,
+                    context=ctx,
+                    context_config=cfg,
+                )
+        self.assertEqual(reply, "final")
+        self.assertEqual(mock_manage.call_count, 2)
 
 
 class TestCreateClient(unittest.TestCase):

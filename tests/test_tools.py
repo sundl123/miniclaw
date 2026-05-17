@@ -23,6 +23,7 @@ from miniclaw.plan_mode import (
     is_readonly_bash,
 )
 from miniclaw.settings import load_workspace_config, get_plan_allowed_patterns
+from miniclaw.tools_config import ReadToolConfig, ToolsConfig
 
 
 class TestResolvePath(unittest.TestCase):
@@ -68,6 +69,37 @@ class TestHandleRead(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             out = handle_read({}, root)
             self.assertIn("error", json.loads(out))
+
+    def test_read_rejects_oversized_file_without_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "big.txt")
+            with open(p, "wb") as f:
+                f.write(b"x" * 300_000)
+            cfg = ToolsConfig(read=ReadToolConfig(max_file_bytes=262144), max_tool_result_chars=100_000, max_glob_files=500)
+            out = handle_read({"path": "big.txt"}, root, tools_cfg=cfg)
+            data = json.loads(out)
+            self.assertIn("error", data)
+            self.assertIn("offset", data["error"].lower())
+
+    def test_read_truncates_when_limit_set_and_output_huge(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "lines.txt")
+            with open(p, "w") as f:
+                for i in range(500):
+                    f.write(f"line {i}: " + ("word " * 40) + "\n")
+            cfg = ToolsConfig(read=ReadToolConfig(max_output_tokens=50), max_tool_result_chars=100_000, max_glob_files=500)
+            out = handle_read({"path": "lines.txt", "offset": 0, "limit": 200}, root, tools_cfg=cfg)
+            self.assertIn("[truncated]", out)
+
+    def test_read_rejects_huge_output_without_limit(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "dense.txt")
+            with open(p, "w") as f:
+                f.write("x" * 50_000)
+            cfg = ToolsConfig(read=ReadToolConfig(max_file_bytes=1_000_000, max_output_tokens=100), max_tool_result_chars=100_000, max_glob_files=500)
+            out = handle_read({"path": "dense.txt"}, root, tools_cfg=cfg)
+            data = json.loads(out)
+            self.assertIn("error", data)
 
 
 class TestHandleWrite(unittest.TestCase):
@@ -149,6 +181,17 @@ class TestHandleGlob(unittest.TestCase):
             out = handle_glob({}, root)
             self.assertIn("error", json.loads(out))
 
+    def test_glob_truncates_file_list(self):
+        with tempfile.TemporaryDirectory() as root:
+            for i in range(10):
+                with open(os.path.join(root, f"f{i}.py"), "w") as f:
+                    f.write("")
+            cfg = ToolsConfig(read=ReadToolConfig(), max_tool_result_chars=100_000, max_glob_files=3)
+            out = handle_glob({"pattern": "*.py"}, root, tools_cfg=cfg)
+            self.assertIn(".py", out)
+            self.assertIn("more files (truncated)", out)
+            self.assertEqual(len(out.splitlines()), 4)  # 3 paths + truncation notice
+
 
 class TestHandleGrep(unittest.TestCase):
     def test_grep_finds_match(self):
@@ -199,6 +242,18 @@ class TestExecuteTool(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             out = execute_tool("bash", {"command": "echo dispatched"}, root)
             self.assertEqual(out.strip(), "dispatched")
+
+    def test_execute_tool_caps_bash_output(self):
+        with tempfile.TemporaryDirectory() as root:
+            cfg = ToolsConfig(read=ReadToolConfig(), max_tool_result_chars=500, max_glob_files=500)
+            out = execute_tool(
+                "bash",
+                {"command": "python3 -c \"print('x' * 2000)\""},
+                root,
+                tools_config=cfg,
+            )
+            self.assertIn("[truncated]", out)
+            self.assertLessEqual(len(out), 600)
 
 
 class TestGetToolSchemas(unittest.TestCase):

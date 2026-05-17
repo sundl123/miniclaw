@@ -12,11 +12,12 @@ from prompt_toolkit.formatted_text import HTML
 from miniclaw.api import create_client, run_turn_with_tools
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
-from miniclaw.settings import get_llm_config
+from miniclaw.settings import get_llm_config, get_context_config
+from miniclaw.context import format_context_status, manual_compact, init_ctx_mgmt
 from miniclaw.skills import build_system_prompt, scan_skills_metadata
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
-from miniclaw.ui import print_banner, print_error, print_status
+from miniclaw.ui import print_banner, print_compact_progress, print_error, print_status
 
 
 def _create_prompt_session() -> PromptSession:
@@ -55,6 +56,7 @@ def _init_session(args: argparse.Namespace) -> dict:
         "workspace": workspace,
         "system_prompt": system_prompt,
         "tools": get_tool_schemas(),
+        "context_config": get_context_config(workspace),
     }
 
 
@@ -66,10 +68,12 @@ def _repl_loop(session: dict) -> None:
     workspace = session["workspace"]
     system_prompt = session["system_prompt"]
     tools = session["tools"]
+    context_config = session["context_config"]
     messages = [{"role": "system", "content": system_prompt}]
 
     plan_dir = os.path.join(workspace, ".miniclaw", "plans")
     context = {"mode": "agent", "plan_dir": plan_dir, "workspace_root": workspace}
+    init_ctx_mgmt(context)
 
     prompt_session = _create_prompt_session()
 
@@ -94,10 +98,28 @@ def _repl_loop(session: dict) -> None:
         if user_input == "/clear":
             messages = [{"role": "system", "content": system_prompt}]
             context["mode"] = "agent"
+            context.pop("_ctx_mgmt", None)
+            init_ctx_mgmt(context)
             print_status("已清空对话历史")
             continue
         if user_input == "/model":
             print_status(f"当前模型: {model}")
+            continue
+        if user_input == "/context":
+            print_status(format_context_status(messages, context_config, context))
+            continue
+        if user_input == "/compact" or user_input.startswith("/compact "):
+            extra = user_input[8:].strip() if user_input.startswith("/compact ") else ""
+            new_messages, ok = manual_compact(
+                client, model, messages, context_config, context,
+                extra_instructions=extra, timeout=timeout,
+                on_compact_progress=print_compact_progress,
+            )
+            if ok:
+                messages = new_messages
+                print_status("对话已压缩为摘要")
+            else:
+                print_error("压缩", "摘要生成失败或对话过短")
             continue
         if user_input == "/plan" or user_input.startswith("/plan "):
             if context["mode"] == "plan":
@@ -115,6 +137,8 @@ def _repl_loop(session: dict) -> None:
                     client, model, messages, tools,
                     print_reasoning=True, timeout=timeout,
                     workspace_root=workspace, context=context,
+                    context_config=context_config,
+                    on_compact_progress=print_compact_progress,
                 )
                 print()
             except (openai.APIError, RuntimeError) as e:
@@ -131,6 +155,8 @@ def _repl_loop(session: dict) -> None:
                 client, model, messages, tools,
                 print_reasoning=True, timeout=timeout,
                 workspace_root=workspace, context=context,
+                context_config=context_config,
+                on_compact_progress=print_compact_progress,
             )
             print()
         except (openai.APIError, RuntimeError) as e:

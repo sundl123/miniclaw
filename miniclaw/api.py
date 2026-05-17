@@ -2,11 +2,18 @@
 import json
 import time
 from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import Optional
 
 from openai import OpenAI
 
 from miniclaw.config import DEFAULT_BASE_URL, DEFAULT_HTTP_TIMEOUT, DEFAULT_MODEL
+from miniclaw.context import (
+    manage_messages,
+    record_usage,
+    init_ctx_mgmt,
+)
+from miniclaw.context.config import ContextConfig
 from miniclaw.tools import execute_tool
 from miniclaw.dev_logging import get_dev_logger
 
@@ -296,13 +303,26 @@ def run_turn_with_tools(
     timeout: int = DEFAULT_HTTP_TIMEOUT,
     workspace_root: str = None,
     context: dict = None,
+    context_config: Optional[ContextConfig] = None,
+    on_compact_progress: Optional[Callable[[str], None]] = None,
 ) -> tuple[str, list[dict]]:
     """带 tool 的对话循环：流式请求 → 若有 tool_calls 则执行并追加消息 → 再请求，直到无 tool_calls。
 
     context 承载 plan mode 状态，由 REPL 层创建并透传给 execute_tool。
+    context_config 控制 micro-compaction 与 summarization。
     """
+    init_ctx_mgmt(context)
+    cfg = context_config
+
     while True:
-        message, _ = chat_stream(
+        if cfg is not None:
+            messages = manage_messages(
+                client, model, messages, cfg, context,
+                timeout=timeout,
+                on_compact_progress=on_compact_progress,
+            )
+
+        message, usage = chat_stream(
             client, messages, model=model,
             tools=tools, tool_choice="auto",
             print_output=True,
@@ -310,6 +330,9 @@ def run_turn_with_tools(
             timeout=timeout,
             extra_body={"reasoning_split": True},
         )
+
+        if cfg is not None:
+            record_usage(context, usage)
 
         tool_calls = message.get("tool_calls") or []
         messages.append(message)

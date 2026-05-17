@@ -83,3 +83,15 @@ def print_error(label: str, message: str) -> None:
 def print_status(message: str) -> None:
     """打印状态/操作反馈信息。"""
     console.print(f"  [dim]{message}[/dim]")
+
+
+def print_compact_progress(phase: str) -> None:
+    """Print context compaction progress (start / done / failed)."""
+    console.print()
+    if phase == "start":
+        console.print("  [dim]正在压缩对话上下文…[/dim]")
+    elif phase == "done":
+        console.print("  [dim]上下文已压缩，继续对话[/dim]")
+    elif phase == "failed":
+        console.print("  [dim]上下文压缩失败，将使用完整历史继续[/dim]")
+    console.print()
