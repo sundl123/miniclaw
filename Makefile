@@ -15,14 +15,14 @@ uninstall: ## 卸载（pipx uninstall）
 test: ## 运行全部测试
 	python3 -m pytest tests/ -v
 
-build: clean ## 构建 dist/ 包（sdist + wheel）
-	python3 -m build
+build: clean ## 构建 dist/ 包（sdist + wheel，经 pipx 隔离，无需系统安装 build）
+	pipx run build
 
 upload: ## 上传到 PyPI（需要先 make build）
-	twine upload dist/*
+	pipx run twine upload dist/*
 
 upload-test: ## 上传到 Test PyPI
-	twine upload --repository testpypi dist/*
+	pipx run twine upload --repository testpypi dist/*
 
 clean: ## 清理构建产物
 	rm -rf dist/ build/ *.egg-info miniclaw.egg-info
