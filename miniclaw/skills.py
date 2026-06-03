@@ -1,6 +1,13 @@
-"""技能目录扫描与 system prompt 构建。"""
+"""技能目录扫描、注册表与 system prompt 构建。"""
+from __future__ import annotations
+
 import os
 import re
+from dataclasses import dataclass
+
+from miniclaw.dirs import get_user_data_dir
+
+_BASE_DIR_PREFIX = "Base directory for this skill: {dir}\n\n"
 
 
 def parse_frontmatter(content: str) -> dict:
@@ -22,29 +29,103 @@ def parse_frontmatter(content: str) -> dict:
     return data
 
 
-def scan_skills_metadata(skills_dir: str) -> list[dict]:
-    """扫描 skills 目录，返回 [{"name": "...", "description": "..."}, ...]。"""
-    result = []
+def strip_frontmatter(content: str) -> str:
+    """去掉 YAML frontmatter，返回正文。"""
+    match = re.match(r"^---\s*\n.*?\n---\s*\n?", content, re.DOTALL)
+    if match:
+        return content[match.end():]
+    return content
+
+
+def normalize_skill_name(name: str) -> str:
+    """规范化 skill 名称，兼容 /commit 写法。"""
+    return (name or "").strip().lstrip("/")
+
+
+@dataclass
+class SkillEntry:
+    name: str
+    description: str
+    skill_dir: str
+    skill_md_path: str
+    source: str  # "global" | "project"
+
+
+class SkillRegistry:
+    """已发现的 skill 注册表。"""
+
+    def __init__(self, entries: dict[str, SkillEntry] | None = None):
+        self._entries = dict(entries or {})
+
+    def lookup(self, name: str) -> SkillEntry | None:
+        return self._entries.get(normalize_skill_name(name))
+
+    def list_metadata(self) -> list[dict]:
+        return [
+            {
+                "name": e.name,
+                "description": e.description,
+                "source": e.source,
+            }
+            for e in sorted(self._entries.values(), key=lambda x: x.name)
+        ]
+
+    def load_skill_body(self, name: str) -> str:
+        """读取 SKILL.md 正文，剥离 frontmatter 并注入 Base directory 前缀。"""
+        entry = self.lookup(name)
+        if entry is None:
+            raise KeyError(name)
+        with open(entry.skill_md_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        body = strip_frontmatter(content).lstrip("\n")
+        return _BASE_DIR_PREFIX.format(dir=entry.skill_dir) + body
+
+
+def _scan_skills_dir(skills_dir: str, source: str) -> dict[str, SkillEntry]:
+    """扫描单个 skills 目录，返回 name -> SkillEntry。"""
+    result: dict[str, SkillEntry] = {}
     if not os.path.isdir(skills_dir):
         return result
-    for name in sorted(os.listdir(skills_dir)):
-        path = os.path.join(skills_dir, name)
-        if not os.path.isdir(path):
+    for dir_name in sorted(os.listdir(skills_dir)):
+        skill_dir = os.path.join(skills_dir, dir_name)
+        if not os.path.isdir(skill_dir):
             continue
-        skill_md = os.path.join(path, "SKILL.md")
+        skill_md = os.path.join(skill_dir, "SKILL.md")
         if not os.path.isfile(skill_md):
             continue
         try:
             with open(skill_md, "r", encoding="utf-8") as f:
                 content = f.read()
-        except Exception:
+        except OSError:
             continue
         meta = parse_frontmatter(content)
-        result.append({
-            "name": meta.get("name") or name,
-            "description": meta.get("description", "(无描述)"),
-        })
+        name = meta.get("name") or dir_name
+        result[name] = SkillEntry(
+            name=name,
+            description=meta.get("description", "(无描述)"),
+            skill_dir=os.path.abspath(skill_dir),
+            skill_md_path=os.path.abspath(skill_md),
+            source=source,
+        )
     return result
+
+
+def discover_skills(workspace: str) -> SkillRegistry:
+    """扫描全局与项目 skill 目录；同名时 project 覆盖 global。"""
+    global_dir = os.path.join(get_user_data_dir(), "skills")
+    project_dir = os.path.join(workspace, ".miniclaw", "skills")
+    entries = _scan_skills_dir(global_dir, "global")
+    entries.update(_scan_skills_dir(project_dir, "project"))
+    return SkillRegistry(entries)
+
+
+def scan_skills_metadata(skills_dir: str) -> list[dict]:
+    """扫描 skills 目录，返回 [{"name": "...", "description": "..."}, ...]。"""
+    entries = _scan_skills_dir(skills_dir, "project")
+    return [
+        {"name": e.name, "description": e.description}
+        for e in sorted(entries.values(), key=lambda x: x.name)
+    ]
 
 
 def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str = None) -> str:
@@ -55,17 +136,25 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
     lines = [
         "你是助手，可以使用提供的工具来完成任务。",
         workspace_line,
-        "## 技能（Skills）的访问方式",
-        "技能存放在工作区的 .miniclaw/skills 目录中。",
-        "每个技能对应一个子目录，例如 .miniclaw/skills/<skill_name>/。",
-        "目录内必有 SKILL.md，描述该技能的用途与使用方式；可能还有 assets/ 等子目录存放模板或脚本。",
-        "当你认为用户需求可能涉及某技能时，应先用 read 查看对应 .miniclaw/skills/<skill_name>/SKILL.md，再根据 SKILL.md 的说明决定是否执行 bash 或读写其他文件。",
+        "## 技能（Skills）",
+        "全局技能目录：~/.miniclaw/skills/",
+        "项目技能目录：{workspace}/.miniclaw/skills/（同名时覆盖全局技能）",
+        "当任务与某个 skill 的描述匹配时，必须先调用 Skill 工具加载该 skill，再按 skill 正文执行。",
+        "不要跳过 Skill 工具直接回答。",
+        "Skill 加载后会给出 Base directory（skill 根目录绝对路径）。",
+        "reference 文件（脚本、模板等）位于该目录下，请用绝对路径调用 read 或 bash。",
         "",
-        "## 当前可用技能列表（自动从 .miniclaw/skills 扫描）",
+        "## 当前可用技能列表",
     ]
     if skill_metadata_list:
         for s in skill_metadata_list:
-            lines.append(f"- {s['name']}: {s['description']}")
+            tag = ""
+            source = s.get("source")
+            if source == "global":
+                tag = " [global]"
+            elif source == "project":
+                tag = " [project]"
+            lines.append(f"- {s['name']}: {s['description']}{tag}")
     else:
-        lines.append("（暂无，可在 .miniclaw/skills 下添加技能目录及 SKILL.md）")
+        lines.append("（暂无，可在 ~/.miniclaw/skills/ 或 .miniclaw/skills/ 下添加技能目录及 SKILL.md）")
     return "\n".join(lines)

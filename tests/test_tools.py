@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from miniclaw.config import resolve_path
+from miniclaw.config import resolve_path, resolve_read_path
 from miniclaw.tools import (
     handle_read,
     handle_write,
@@ -12,6 +12,7 @@ from miniclaw.tools import (
     handle_glob,
     handle_grep,
     handle_bash,
+    handle_skill,
     execute_tool,
     get_tool_schemas,
 )
@@ -24,6 +25,7 @@ from miniclaw.plan_mode import (
 )
 from miniclaw.settings import load_workspace_config, get_plan_allowed_patterns
 from miniclaw.tools_config import ReadToolConfig, ToolsConfig
+from miniclaw.skills import SkillEntry, SkillRegistry
 
 
 class TestResolvePath(unittest.TestCase):
@@ -36,6 +38,95 @@ class TestResolvePath(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(PermissionError):
                 resolve_path("../../../etc/passwd", root)
+
+
+class TestResolveReadPath(unittest.TestCase):
+    def test_absolute_workspace_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "f.txt")
+            with open(p, "w") as f:
+                f.write("x")
+            resolved = resolve_read_path(p, root)
+            self.assertEqual(resolved, os.path.normpath(p))
+
+    def test_active_skill_dir_allowed(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.md")
+                with open(ref, "w") as f:
+                    f.write("ref")
+                resolved = resolve_read_path(
+                    ref, root, allowed_skill_dirs={skill_dir},
+                )
+                self.assertEqual(resolved, os.path.normpath(ref))
+
+    def test_inactive_skill_dir_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.md")
+                with open(ref, "w") as f:
+                    f.write("ref")
+                with self.assertRaises(PermissionError):
+                    resolve_read_path(ref, root)
+
+    def test_outside_workspace_and_skill_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                with tempfile.TemporaryDirectory() as other:
+                    secret = os.path.join(other, "secret.txt")
+                    with open(secret, "w") as f:
+                        f.write("secret")
+                    with self.assertRaises(PermissionError):
+                        resolve_read_path(secret, root, allowed_skill_dirs={skill_dir})
+
+
+class TestHandleSkill(unittest.TestCase):
+    def _make_registry(self, skill_dir: str, name: str = "demo") -> SkillRegistry:
+        md = os.path.join(skill_dir, "SKILL.md")
+        return SkillRegistry({
+            name: SkillEntry(
+                name=name,
+                description="Demo",
+                skill_dir=os.path.abspath(skill_dir),
+                skill_md_path=md,
+                source="global",
+            ),
+        })
+
+    def test_load_skill_activates_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                md = os.path.join(skill_dir, "SKILL.md")
+                with open(md, "w") as f:
+                    f.write("---\nname: demo\ndescription: d\n---\n# Demo skill")
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("reference content")
+                ctx = {"skill_registry": self._make_registry(skill_dir), "active_skill_dirs": set()}
+                out = handle_skill({"skill": "/demo"}, root, context=ctx)
+                self.assertIn("Base directory for this skill:", out)
+                self.assertIn("# Demo skill", out)
+                self.assertIn(skill_dir, ctx["active_skill_dirs"])
+                read_out = handle_read({"path": ref}, root, context=ctx)
+                self.assertIn("reference content", read_out)
+
+    def test_read_before_load_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("secret")
+                ctx = {"active_skill_dirs": set()}
+                out = handle_read({"path": ref}, root, context=ctx)
+                self.assertIn("error", json.loads(out))
+
+    def test_unknown_skill(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = {"skill_registry": SkillRegistry(), "active_skill_dirs": set()}
+            out = handle_skill({"skill": "missing"}, root, context=ctx)
+            data = json.loads(out)
+            self.assertIn("error", data)
+            self.assertIn("missing", data["error"])
 
 
 class TestHandleRead(unittest.TestCase):
@@ -257,12 +348,12 @@ class TestExecuteTool(unittest.TestCase):
 
 
 class TestGetToolSchemas(unittest.TestCase):
-    def test_returns_eight_tools(self):
+    def test_returns_nine_tools(self):
         schemas = get_tool_schemas()
-        self.assertEqual(len(schemas), 8)
+        self.assertEqual(len(schemas), 9)
         names = {s["function"]["name"] for s in schemas}
         self.assertEqual(names, {
-            "read", "write", "edit", "glob", "grep", "bash",
+            "read", "write", "edit", "glob", "grep", "bash", "Skill",
             "enter_plan_mode", "exit_plan_mode",
         })
 
@@ -368,7 +459,7 @@ class TestCheckPlanMode(unittest.TestCase):
     def test_plan_mode_allows_readonly(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
-            for tool in ("read", "glob", "grep", "enter_plan_mode", "exit_plan_mode"):
+            for tool in ("read", "glob", "grep", "Skill", "enter_plan_mode", "exit_plan_mode"):
                 self.assertIsNone(check_plan_mode(tool, {}, ctx))
 
     def test_plan_mode_allows_plan_dir_write(self):

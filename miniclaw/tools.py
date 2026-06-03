@@ -6,7 +6,7 @@ import json
 import os
 import subprocess
 
-from miniclaw.config import resolve_path
+from miniclaw.config import resolve_path, resolve_read_path
 from miniclaw.context.tokens import estimate_text_tokens
 from miniclaw.plan_mode import (
     PLAN_MODE_HANDLERS,
@@ -15,6 +15,7 @@ from miniclaw.plan_mode import (
 )
 from miniclaw.read_file import FileTooLargeError, read_file_lines
 from miniclaw.settings import get_tools_config
+from miniclaw.skills import normalize_skill_name
 from miniclaw.tool_output import cap_tool_result, truncate_read_output
 from miniclaw.tools_config import ToolsConfig
 from miniclaw.ui import print_tool_call
@@ -28,6 +29,8 @@ def handle_read(
     args: dict,
     workspace_root: str,
     tools_cfg: ToolsConfig | None = None,
+    *,
+    context: dict | None = None,
 ) -> str:
     """读取文件，返回带行号的内容。支持 offset / limit 做部分读取。"""
     path = args.get("path") or ""
@@ -35,7 +38,15 @@ def handle_read(
         return json.dumps({"error": "read 需要 path 参数"}, ensure_ascii=False)
 
     cfg = (tools_cfg or get_tools_config(workspace_root)).read
-    abs_path = resolve_path(path, workspace_root)
+    allowed_skill_dirs = frozenset()
+    if context:
+        allowed_skill_dirs = frozenset(context.get("active_skill_dirs") or set())
+    try:
+        abs_path = resolve_read_path(
+            path, workspace_root, allowed_skill_dirs=allowed_skill_dirs,
+        )
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
     if not os.path.isfile(abs_path):
         return json.dumps({"error": f"文件不存在: {path}"}, ensure_ascii=False)
 
@@ -190,6 +201,31 @@ def handle_bash(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None =
     return out or "(无输出)"
 
 
+def handle_skill(args: dict, workspace_root: str, context: dict | None = None) -> str:
+    """加载 skill：读取 SKILL.md 正文并注入 Base directory 前缀。"""
+    raw_name = args.get("skill") or ""
+    name = normalize_skill_name(raw_name)
+    if not name:
+        return json.dumps({"error": "Skill 需要 skill 参数"}, ensure_ascii=False)
+
+    registry = (context or {}).get("skill_registry")
+    if registry is None:
+        return json.dumps({"error": "skill 注册表未初始化"}, ensure_ascii=False)
+
+    entry = registry.lookup(name)
+    if entry is None:
+        return json.dumps({"error": f"未找到 skill: {name}"}, ensure_ascii=False)
+
+    try:
+        body = registry.load_skill_body(name)
+    except OSError as e:
+        return json.dumps({"error": f"读取 skill 失败: {e}"}, ensure_ascii=False)
+
+    active = (context or {}).setdefault("active_skill_dirs", set())
+    active.add(entry.skill_dir)
+    return body
+
+
 # ---------------------------------------------------------------------------
 # 工具注册表与分发
 # ---------------------------------------------------------------------------
@@ -201,6 +237,7 @@ TOOL_HANDLERS = {
     "glob": handle_glob,
     "grep": handle_grep,
     "bash": handle_bash,
+    "Skill": handle_skill,
 }
 
 
@@ -219,6 +256,8 @@ def _print_tool_invocation(name: str, args: dict) -> None:
         detail = f"pattern={args.get('pattern', '')}"
     elif name == "grep":
         detail = f"pattern={args.get('pattern', '')} path={args.get('path', '.')}"
+    elif name == "Skill":
+        detail = f"skill={args.get('skill', '')}"
     elif name in PLAN_MODE_HANDLERS:
         pass
     print_tool_call(name, detail)
@@ -258,7 +297,12 @@ def execute_tool(
         return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
     _print_tool_invocation(name, args)
     try:
-        result = handler(args, root, tools_cfg=cfg)
+        if name == "read":
+            result = handler(args, root, tools_cfg=cfg, context=ctx)
+        elif name == "Skill":
+            result = handler(args, root, context=ctx)
+        else:
+            result = handler(args, root, tools_cfg=cfg)
     except PermissionError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
     except subprocess.TimeoutExpired:
@@ -336,5 +380,19 @@ def get_tool_schemas() -> list[dict]:
             "parameters": {"type": "object", "properties": {
                 "command": {"type": "string", "description": "The bash command to execute"},
             }, "required": ["command"]},
+        }},
+        {"type": "function", "function": {
+            "name": "Skill",
+            "description": (
+                "Load and activate a skill by name. Call this BEFORE executing "
+                "task-specific workflows when a skill matches the user's request. "
+                "Available skills are listed in the system prompt."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "skill": {
+                    "type": "string",
+                    "description": "Skill name (without leading slash, e.g. code-review)",
+                },
+            }, "required": ["skill"]},
         }},
     ] + get_plan_tool_schemas()

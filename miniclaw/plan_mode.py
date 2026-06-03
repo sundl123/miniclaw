@@ -84,7 +84,7 @@ def is_readonly_bash(
 # 权限检查
 # ---------------------------------------------------------------------------
 
-READONLY_TOOLS = frozenset({"read", "glob", "grep", "enter_plan_mode", "exit_plan_mode"})
+READONLY_TOOLS = frozenset({"read", "glob", "grep", "Skill", "enter_plan_mode", "exit_plan_mode"})
 
 
 def _is_plan_dir_write(name: str, args: dict, context: dict) -> bool:
