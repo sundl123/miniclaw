@@ -8,6 +8,7 @@ from miniclaw.api import (
     chat, chat_raw, chat_stream, create_client,
     run_turn_with_tools,
     _execute_tool_call, _build_message, _consume_stream,
+    _log_cache_metrics,
     _StreamResult, _StreamPrinter,
 )
 from miniclaw.context.config import ContextConfig
@@ -348,6 +349,43 @@ class TestConsumeStream(unittest.TestCase):
         result = self._run(chunks)
         self.assertIsNone(result.ttft)
         self.assertIsNone(result.ttfc)
+
+
+# ---------------------------------------------------------------------------
+# cache metrics logging
+# ---------------------------------------------------------------------------
+
+class TestLogCacheMetrics(unittest.TestCase):
+    def test_cached_tokens_none_with_details_present(self):
+        """Proxy may return prompt_tokens_details with cached_tokens=null."""
+        usage = MagicMock()
+        usage.prompt_tokens = 100
+        usage.completion_tokens = 10
+        details = MagicMock()
+        details.cached_tokens = None
+        usage.prompt_tokens_details = details
+
+        with patch("miniclaw.api.get_dev_logger") as mock_logger:
+            _log_cache_metrics(usage)
+            mock_logger.return_value.info.assert_called_once()
+            msg = mock_logger.return_value.info.call_args[0][0]
+            args = mock_logger.return_value.info.call_args[0][1:]
+            self.assertIn("Cache metrics", msg)
+            self.assertEqual(args[0], 100)   # prompt_tokens
+            self.assertEqual(args[1], 0)     # cached_tokens
+            self.assertEqual(args[2], 0.0)   # cache_hit_ratio
+            self.assertEqual(args[3], 10)    # completion_tokens
+
+    def test_no_prompt_tokens_details(self):
+        usage = MagicMock()
+        usage.prompt_tokens = 50
+        usage.completion_tokens = 5
+        usage.prompt_tokens_details = None
+
+        with patch("miniclaw.api.get_dev_logger") as mock_logger:
+            _log_cache_metrics(usage)
+            args = mock_logger.return_value.info.call_args[0][1:]
+            self.assertEqual(args[1], 0)
 
 
 # ---------------------------------------------------------------------------
