@@ -78,7 +78,6 @@ def _repl_loop(session: dict) -> None:
         "plan_dir": plan_dir,
         "workspace_root": workspace,
         "skill_registry": skill_registry,
-        "active_skill_dirs": set(),
     }
     init_ctx_mgmt(context)
 
@@ -105,7 +104,6 @@ def _repl_loop(session: dict) -> None:
         if user_input == "/clear":
             messages = [{"role": "system", "content": system_prompt}]
             context["mode"] = "agent"
-            context["active_skill_dirs"] = set()
             context.pop("_ctx_mgmt", None)
             init_ctx_mgmt(context)
             print_status("已清空对话历史")

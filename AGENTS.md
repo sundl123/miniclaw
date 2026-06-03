@@ -11,7 +11,7 @@
 - **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量或 config.json 的 `llm` 配置切换模型和 API 地址）。
 - **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash`、`Skill` 七个工具，在 workspace 内读写文件和执行命令。
 - **Plan Mode**：面对复杂任务时进入只读规划阶段，只读 bash 命令自动放行，写操作被拦截。可通过 `.miniclaw/config.json` 扩展允许的 bash 命令。
-- **Skills 技能目录**：启动时扫描 `~/.miniclaw/skills/`（全局）与 `{workspace}/.miniclaw/skills/`（项目，同名覆盖全局），从各子目录的 `SKILL.md` 解析元数据拼入 system prompt；模型通过 `Skill` tool 加载 skill 正文（注入 Base directory 前缀）。已加载 skill 目录下的 reference 文件允许 `read` 访问（可超出 workspace）。
+- **Skills 技能目录**：启动时扫描 `~/.miniclaw/skills/`（全局）与 `{workspace}/.miniclaw/skills/`（项目，同名覆盖全局），从各子目录的 `SKILL.md` 解析元数据拼入 system prompt；模型通过 `Skill` tool 加载 skill 正文（注入 Base directory 前缀）。已注册 skill 目录对 `read`/`grep`/`glob` 只读放行（可超出 workspace）。
 
 **主要入口与结构**：
 

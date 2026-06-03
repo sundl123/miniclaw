@@ -145,12 +145,24 @@ class TestLoadSkillBody(unittest.TestCase):
             self.assertNotIn("name: foo", body)
 
 
+class TestSkillDirs(unittest.TestCase):
+    def test_skill_dirs_returns_frozenset(self):
+        from miniclaw.skills import SkillEntry
+        registry = SkillRegistry({
+            "a": SkillEntry("a", "A", "/tmp/a", "/tmp/a/SKILL.md", "global"),
+            "b": SkillEntry("b", "B", "/tmp/b", "/tmp/b/SKILL.md", "project"),
+        })
+        dirs = registry.skill_dirs()
+        self.assertEqual(dirs, frozenset({"/tmp/a", "/tmp/b"}))
+
+
 class TestBuildSystemPrompt(unittest.TestCase):
     def test_empty_list(self):
         out = build_system_prompt([])
         self.assertIn("当前可用技能列表", out)
         self.assertIn("暂无", out)
-        self.assertIn("Skill 工具", out)
+        self.assertIn("Skill", out)
+        self.assertNotIn("~/.miniclaw", out)
 
     def test_with_skills(self):
         meta = [
@@ -158,9 +170,11 @@ class TestBuildSystemPrompt(unittest.TestCase):
             {"name": "b", "description": "B", "source": "project"},
         ]
         out = build_system_prompt(meta)
-        self.assertIn("- a: A [global]", out)
-        self.assertIn("- b: B [project]", out)
-        self.assertNotIn("read 查看", out)
+        self.assertIn("- a: A", out)
+        self.assertIn("- b: B", out)
+        self.assertNotIn("[global]", out)
+        self.assertNotIn("[project]", out)
+        self.assertNotIn("~/.miniclaw", out)
 
     def test_without_workspace_root(self):
         out = build_system_prompt([])

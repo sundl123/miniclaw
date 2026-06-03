@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from miniclaw.config import resolve_path, resolve_read_path
+from miniclaw.config import resolve_glob_pattern, resolve_path, resolve_read_path
 from miniclaw.tools import (
     handle_read,
     handle_write,
@@ -49,18 +49,18 @@ class TestResolveReadPath(unittest.TestCase):
             resolved = resolve_read_path(p, root)
             self.assertEqual(resolved, os.path.normpath(p))
 
-    def test_active_skill_dir_allowed(self):
+    def test_registered_skill_dir_allowed(self):
         with tempfile.TemporaryDirectory() as root:
             with tempfile.TemporaryDirectory() as skill_dir:
                 ref = os.path.join(skill_dir, "ref.md")
                 with open(ref, "w") as f:
                     f.write("ref")
                 resolved = resolve_read_path(
-                    ref, root, allowed_skill_dirs={skill_dir},
+                    ref, root, registered_skill_dirs=frozenset({skill_dir}),
                 )
                 self.assertEqual(resolved, os.path.normpath(ref))
 
-    def test_inactive_skill_dir_rejected(self):
+    def test_unregistered_skill_dir_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             with tempfile.TemporaryDirectory() as skill_dir:
                 ref = os.path.join(skill_dir, "ref.md")
@@ -77,7 +77,27 @@ class TestResolveReadPath(unittest.TestCase):
                     with open(secret, "w") as f:
                         f.write("secret")
                     with self.assertRaises(PermissionError):
-                        resolve_read_path(secret, root, allowed_skill_dirs={skill_dir})
+                        resolve_read_path(
+                            secret, root, registered_skill_dirs=frozenset({skill_dir}),
+                        )
+
+
+class TestResolveGlobPattern(unittest.TestCase):
+    def test_relative_pattern_uses_workspace(self):
+        with tempfile.TemporaryDirectory() as root:
+            full, base = resolve_glob_pattern("**/*.py", root)
+            self.assertEqual(base, os.path.normpath(root))
+            self.assertEqual(full, os.path.join(root, "**/*.py"))
+
+    def test_absolute_pattern_in_registered_skill_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                pattern = os.path.join(skill_dir, "**", "*.md")
+                full, base = resolve_glob_pattern(
+                    pattern, root, registered_skill_dirs=frozenset({skill_dir}),
+                )
+                self.assertEqual(full, pattern)
+                self.assertEqual(base, os.path.normpath(skill_dir))
 
 
 class TestHandleSkill(unittest.TestCase):
@@ -93,36 +113,63 @@ class TestHandleSkill(unittest.TestCase):
             ),
         })
 
-    def test_load_skill_activates_dir(self):
+    def test_load_skill_body(self):
         with tempfile.TemporaryDirectory() as root:
             with tempfile.TemporaryDirectory() as skill_dir:
                 md = os.path.join(skill_dir, "SKILL.md")
                 with open(md, "w") as f:
                     f.write("---\nname: demo\ndescription: d\n---\n# Demo skill")
-                ref = os.path.join(skill_dir, "ref.txt")
-                with open(ref, "w") as f:
-                    f.write("reference content")
-                ctx = {"skill_registry": self._make_registry(skill_dir), "active_skill_dirs": set()}
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
                 out = handle_skill({"skill": "/demo"}, root, context=ctx)
                 self.assertIn("Base directory for this skill:", out)
                 self.assertIn("# Demo skill", out)
-                self.assertIn(skill_dir, ctx["active_skill_dirs"])
+
+    def test_read_registered_skill_without_load(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("reference content")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
                 read_out = handle_read({"path": ref}, root, context=ctx)
                 self.assertIn("reference content", read_out)
 
-    def test_read_before_load_rejected(self):
+    def test_read_unregistered_skill_dir_rejected(self):
         with tempfile.TemporaryDirectory() as root:
             with tempfile.TemporaryDirectory() as skill_dir:
                 ref = os.path.join(skill_dir, "ref.txt")
                 with open(ref, "w") as f:
                     f.write("secret")
-                ctx = {"active_skill_dirs": set()}
+                ctx = {"skill_registry": SkillRegistry()}
                 out = handle_read({"path": ref}, root, context=ctx)
                 self.assertIn("error", json.loads(out))
 
+    def test_grep_in_registered_skill_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("findme here\n")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
+                out = handle_grep(
+                    {"pattern": "findme", "path": skill_dir}, root, context=ctx,
+                )
+                self.assertIn("findme", out)
+
+    def test_glob_in_registered_skill_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.md")
+                with open(ref, "w") as f:
+                    f.write("x")
+                pattern = os.path.join(skill_dir, "*.md")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
+                out = handle_glob({"pattern": pattern}, root, context=ctx)
+                self.assertIn("ref.md", out)
+
     def test_unknown_skill(self):
         with tempfile.TemporaryDirectory() as root:
-            ctx = {"skill_registry": SkillRegistry(), "active_skill_dirs": set()}
+            ctx = {"skill_registry": SkillRegistry()}
             out = handle_skill({"skill": "missing"}, root, context=ctx)
             data = json.loads(out)
             self.assertIn("error", data)

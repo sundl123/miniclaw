@@ -6,7 +6,12 @@ import json
 import os
 import subprocess
 
-from miniclaw.config import resolve_path, resolve_read_path
+from miniclaw.config import (
+    is_allowed_read_path,
+    resolve_glob_pattern,
+    resolve_path,
+    resolve_read_path,
+)
 from miniclaw.context.tokens import estimate_text_tokens
 from miniclaw.plan_mode import (
     PLAN_MODE_HANDLERS,
@@ -25,6 +30,11 @@ from miniclaw.ui import print_tool_call
 # 工具实现
 # ---------------------------------------------------------------------------
 
+def _registered_skill_dirs(context: dict | None) -> frozenset[str]:
+    registry = (context or {}).get("skill_registry")
+    return registry.skill_dirs() if registry else frozenset()
+
+
 def handle_read(
     args: dict,
     workspace_root: str,
@@ -38,12 +48,10 @@ def handle_read(
         return json.dumps({"error": "read 需要 path 参数"}, ensure_ascii=False)
 
     cfg = (tools_cfg or get_tools_config(workspace_root)).read
-    allowed_skill_dirs = frozenset()
-    if context:
-        allowed_skill_dirs = frozenset(context.get("active_skill_dirs") or set())
+    skill_dirs = _registered_skill_dirs(context)
     try:
         abs_path = resolve_read_path(
-            path, workspace_root, allowed_skill_dirs=allowed_skill_dirs,
+            path, workspace_root, registered_skill_dirs=skill_dirs,
         )
     except PermissionError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -139,18 +147,37 @@ def handle_glob(
     args: dict,
     workspace_root: str,
     tools_cfg: ToolsConfig | None = None,
+    *,
+    context: dict | None = None,
 ) -> str:
-    """在工作区内按 glob 模式查找文件，按修改时间降序返回。"""
+    """在工作区或已注册 skill 目录内按 glob 模式查找文件，按修改时间降序返回。"""
     pattern = args.get("pattern") or ""
     if not pattern:
         return json.dumps({"error": "glob 需要 pattern 参数"}, ensure_ascii=False)
 
     cfg = tools_cfg or get_tools_config(workspace_root)
-    full_pattern = os.path.join(workspace_root, pattern)
+    skill_dirs = _registered_skill_dirs(context)
+    workspace_root = os.path.normpath(workspace_root)
+    try:
+        full_pattern, result_base = resolve_glob_pattern(
+            pattern, workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
     files = glob_module.glob(full_pattern, recursive=True)
-    files = [f for f in files if f.startswith(workspace_root)]
+    files = [
+        f for f in files
+        if is_allowed_read_path(
+            os.path.normpath(f), workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    ]
     files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-    rel_files = [os.path.relpath(f, workspace_root) for f in files]
+
+    if result_base == workspace_root:
+        rel_files = [os.path.relpath(f, workspace_root) for f in files]
+    else:
+        rel_files = [os.path.normpath(f) for f in files]
 
     if not rel_files:
         return "No files found"
@@ -164,13 +191,25 @@ def handle_glob(
     return "\n".join(shown) + f"\n… and {more} more files (truncated)"
 
 
-def handle_grep(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None = None) -> str:
-    """在工作区内用 grep 搜索文件内容。"""
+def handle_grep(
+    args: dict,
+    workspace_root: str,
+    tools_cfg: ToolsConfig | None = None,
+    *,
+    context: dict | None = None,
+) -> str:
+    """在工作区或已注册 skill 目录内用 grep 搜索文件内容。"""
     pattern = args.get("pattern") or ""
     if not pattern:
         return json.dumps({"error": "grep 需要 pattern 参数"}, ensure_ascii=False)
     search_path = args.get("path") or "."
-    abs_search = resolve_path(search_path, workspace_root)
+    skill_dirs = _registered_skill_dirs(context)
+    try:
+        abs_search = resolve_read_path(
+            search_path, workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
     try:
         r = subprocess.run(
             ["grep", "-rn", "--", pattern, abs_search],
@@ -221,8 +260,6 @@ def handle_skill(args: dict, workspace_root: str, context: dict | None = None) -
     except OSError as e:
         return json.dumps({"error": f"读取 skill 失败: {e}"}, ensure_ascii=False)
 
-    active = (context or {}).setdefault("active_skill_dirs", set())
-    active.add(entry.skill_dir)
     return body
 
 
@@ -297,7 +334,7 @@ def execute_tool(
         return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
     _print_tool_invocation(name, args)
     try:
-        if name == "read":
+        if name in ("read", "grep", "glob"):
             result = handler(args, root, tools_cfg=cfg, context=ctx)
         elif name == "Skill":
             result = handler(args, root, context=ctx)
@@ -359,7 +396,8 @@ def get_tool_schemas() -> list[dict]:
         {"type": "function", "function": {
             "name": "glob",
             "description": (
-                "Find files matching a glob pattern within the workspace. "
+                "Find files matching a glob pattern within the workspace or a registered "
+                "skill directory (use an absolute pattern for skill dirs). "
                 "Use ** for recursive matching. Results are capped (newest first)."
             ),
             "parameters": {"type": "object", "properties": {
@@ -368,7 +406,10 @@ def get_tool_schemas() -> list[dict]:
         }},
         {"type": "function", "function": {
             "name": "grep",
-            "description": "Search file contents for a pattern (regex) within the workspace.",
+            "description": (
+                "Search file contents for a pattern (regex) within the workspace or a "
+                "registered skill directory (absolute path)."
+            ),
             "parameters": {"type": "object", "properties": {
                 "pattern": {"type": "string", "description": "Search pattern (regex)"},
                 "path": {"type": "string", "description": "Relative path to search in (default: workspace root)"},

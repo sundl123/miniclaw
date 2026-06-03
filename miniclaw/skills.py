@@ -70,6 +70,9 @@ class SkillRegistry:
             for e in sorted(self._entries.values(), key=lambda x: x.name)
         ]
 
+    def skill_dirs(self) -> frozenset[str]:
+        return frozenset(e.skill_dir for e in self._entries.values())
+
     def load_skill_body(self, name: str) -> str:
         """读取 SKILL.md 正文，剥离 frontmatter 并注入 Base directory 前缀。"""
         entry = self.lookup(name)
@@ -137,24 +140,15 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
         "你是助手，可以使用提供的工具来完成任务。",
         workspace_line,
         "## 技能（Skills）",
-        "全局技能目录：~/.miniclaw/skills/",
-        "项目技能目录：{workspace}/.miniclaw/skills/（同名时覆盖全局技能）",
-        "当任务与某个 skill 的描述匹配时，必须先调用 Skill 工具加载该 skill，再按 skill 正文执行。",
+        "当任务与某个 skill 的描述匹配时，必须先调用 Skill 工具加载，再按 skill 正文执行。",
         "不要跳过 Skill 工具直接回答。",
-        "Skill 加载后会给出 Base directory（skill 根目录绝对路径）。",
-        "reference 文件（脚本、模板等）位于该目录下，请用绝对路径调用 read 或 bash。",
+        "Skill 加载后会给出 Base directory；reference 文件用绝对路径 read、bash、grep 或 glob。",
         "",
         "## 当前可用技能列表",
     ]
     if skill_metadata_list:
         for s in skill_metadata_list:
-            tag = ""
-            source = s.get("source")
-            if source == "global":
-                tag = " [global]"
-            elif source == "project":
-                tag = " [project]"
-            lines.append(f"- {s['name']}: {s['description']}{tag}")
+            lines.append(f"- {s['name']}: {s['description']}")
     else:
-        lines.append("（暂无，可在 ~/.miniclaw/skills/ 或 .miniclaw/skills/ 下添加技能目录及 SKILL.md）")
+        lines.append("（暂无可用 skill）")
     return "\n".join(lines)
