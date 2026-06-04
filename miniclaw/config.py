@@ -1,6 +1,7 @@
 """配置常量：路径安全与 LLM 默认值。"""
 import os
 import re
+from datetime import date
 
 _GLOB_META_RE = re.compile(r"[*?\[]")
 
@@ -24,10 +25,21 @@ def is_allowed_read_path(
     return any(_is_under_dir(abs_path, skill_dir) for skill_dir in registered_skill_dirs)
 
 
+def get_local_iso_date() -> str:
+    """返回本地时区 ISO 日期 YYYY-MM-DD；测试可用 MINICLAW_OVERRIDE_DATE 覆盖。"""
+    override = os.environ.get("MINICLAW_OVERRIDE_DATE")
+    if override:
+        return override
+    return date.today().isoformat()
+
+
 def resolve_path(path: str, workspace_root: str) -> str:
-    """将相对 path 解析为工作区内的绝对路径，禁止 .. 逃逸。"""
-    path = path.lstrip("/")
-    abs_path = os.path.normpath(os.path.join(workspace_root, path))
+    """将 path 解析为工作区内的绝对路径（支持绝对/相对），禁止 .. 逃逸。"""
+    workspace_root = os.path.normpath(workspace_root)
+    if os.path.isabs(path):
+        abs_path = os.path.normpath(path)
+    else:
+        abs_path = os.path.normpath(os.path.join(workspace_root, path))
     if not _is_under_dir(abs_path, workspace_root):
         raise PermissionError(f"路径不允许超出工作区: {path}")
     return abs_path

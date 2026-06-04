@@ -39,6 +39,17 @@ class TestResolvePath(unittest.TestCase):
             with self.assertRaises(PermissionError):
                 resolve_path("../../../etc/passwd", root)
 
+    def test_absolute_workspace_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = os.path.join(root, "docs", "report.md")
+            resolved = resolve_path(target, root)
+            self.assertEqual(resolved, os.path.normpath(target))
+
+    def test_absolute_outside_workspace_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(PermissionError):
+                resolve_path("/etc/passwd", root)
+
 
 class TestResolveReadPath(unittest.TestCase):
     def test_absolute_workspace_path(self):
@@ -259,6 +270,15 @@ class TestHandleWrite(unittest.TestCase):
             out = handle_write({"content": "x"}, root)
             self.assertIn("error", json.loads(out))
 
+    def test_write_absolute_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = os.path.join(root, "docs", "report.md")
+            out = handle_write({"path": target, "content": "hello"}, root)
+            self.assertIn("Successfully", out)
+            self.assertIn(os.path.normpath(target), out)
+            with open(target) as f:
+                self.assertEqual(f.read(), "hello")
+
 
 class TestHandleEdit(unittest.TestCase):
     def test_edit_exact_match(self):
@@ -296,6 +316,19 @@ class TestHandleEdit(unittest.TestCase):
                 f.write("hello")
             out = handle_edit({"path": "f.txt", "old_string": "", "new_string": "x"}, root)
             self.assertIn("error", json.loads(out))
+
+    def test_edit_absolute_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "f.txt")
+            with open(p, "w") as f:
+                f.write("hello world")
+            out = handle_edit(
+                {"path": p, "old_string": "world", "new_string": "python"}, root,
+            )
+            self.assertIn("Successfully", out)
+            self.assertIn(os.path.normpath(p), out)
+            with open(p) as f:
+                self.assertEqual(f.read(), "hello python")
 
 
 class TestHandleGlob(unittest.TestCase):
@@ -482,6 +515,13 @@ class TestIsPlanDirWrite(unittest.TestCase):
             ctx = {"plan_dir": plan_dir, "workspace_root": root}
             self.assertTrue(_is_plan_dir_write("edit", {"path": ".miniclaw/plans/my-plan.md"}, ctx))
 
+    def test_write_to_plan_dir_absolute(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            plan_file = os.path.join(plan_dir, "code-review-service-layer.md")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertTrue(_is_plan_dir_write("write", {"path": plan_file}, ctx))
+
     def test_bash_not_plan_dir(self):
         with tempfile.TemporaryDirectory() as root:
             plan_dir = os.path.join(root, ".miniclaw", "plans")
@@ -514,6 +554,14 @@ class TestCheckPlanMode(unittest.TestCase):
             ctx = self._make_ctx(root)
             self.assertIsNone(
                 check_plan_mode("write", {"path": ".miniclaw/plans/my-plan.md"}, ctx)
+            )
+
+    def test_plan_mode_allows_plan_dir_write_absolute(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = self._make_ctx(root)
+            plan_file = os.path.join(root, ".miniclaw", "plans", "my-plan.md")
+            self.assertIsNone(
+                check_plan_mode("write", {"path": plan_file}, ctx)
             )
 
     def test_plan_mode_allows_any_file_in_plan_dir(self):
@@ -596,6 +644,23 @@ class TestExecuteToolPlanMode(unittest.TestCase):
             result = execute_tool("write", {"path": ".miniclaw/plans/my-plan.md", "content": "# Plan"}, root, context=ctx)
             self.assertIn("Successfully", result)
             with open(os.path.join(plan_dir, "my-plan.md")) as f:
+                self.assertEqual(f.read(), "# Plan")
+
+    def test_execute_tool_plan_mode_allows_plan_dir_write_absolute(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            os.makedirs(plan_dir)
+            plan_file = os.path.join(plan_dir, "my-plan.md")
+            ctx = {
+                "mode": "plan",
+                "plan_dir": plan_dir,
+                "workspace_root": root,
+            }
+            result = execute_tool(
+                "write", {"path": plan_file, "content": "# Plan"}, root, context=ctx,
+            )
+            self.assertIn("Successfully", result)
+            with open(plan_file) as f:
                 self.assertEqual(f.read(), "# Plan")
 
     def test_execute_tool_plan_mode_allows_multiple_plan_files(self):

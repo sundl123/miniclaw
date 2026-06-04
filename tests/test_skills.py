@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import miniclaw.dirs as dirs_mod
 from miniclaw.skills import (
@@ -183,6 +184,12 @@ class TestBuildSystemPrompt(unittest.TestCase):
     def test_with_workspace_root(self):
         out = build_system_prompt([], workspace_root="/tmp/my-workspace")
         self.assertIn("当前工作区目录：/tmp/my-workspace", out)
+        self.assertRegex(out, r"当前日期：\d{4}-\d{2}-\d{2}")
+
+    def test_date_override_env(self):
+        with patch.dict(os.environ, {"MINICLAW_OVERRIDE_DATE": "2026-06-03"}):
+            out = build_system_prompt([], workspace_root="/tmp/ws")
+        self.assertIn("当前日期：2026-06-03", out)
 
 
 if __name__ == "__main__":

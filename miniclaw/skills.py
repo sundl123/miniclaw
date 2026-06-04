@@ -5,6 +5,7 @@ import os
 import re
 from dataclasses import dataclass
 
+from miniclaw.config import get_local_iso_date
 from miniclaw.dirs import get_user_data_dir
 
 _BASE_DIR_PREFIX = "Base directory for this skill: {dir}\n\n"
@@ -133,16 +134,25 @@ def scan_skills_metadata(skills_dir: str) -> list[dict]:
 
 def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str = None) -> str:
     """根据技能元数据列表拼接 system prompt。"""
-    workspace_line = ""
+    env_lines = ""
+    path_hint = "文件工具（read/write/edit/grep/glob）的 path 必须使用绝对路径。"
     if workspace_root:
-        workspace_line = f"\n当前工作区目录：{workspace_root}\n"
+        env_lines = (
+            f"\n当前工作区目录：{workspace_root}\n"
+            f"当前日期：{get_local_iso_date()}\n"
+        )
+        path_hint = (
+            "文件工具（read/write/edit/grep/glob）的 path 必须使用绝对路径。"
+            f" workspace 内文件以 {workspace_root} 为前缀；"
+            "skill reference 以 Skill 加载后的 Base directory 为前缀。"
+        )
     lines = [
         "你是助手，可以使用提供的工具来完成任务。",
-        workspace_line,
+        env_lines,
         "## 技能（Skills）",
         "当任务与某个 skill 的描述匹配时，必须先调用 Skill 工具加载，再按 skill 正文执行。",
         "不要跳过 Skill 工具直接回答。",
-        "Skill 加载后会给出 Base directory；reference 文件用绝对路径 read、bash、grep 或 glob。",
+        path_hint,
         "",
         "## 当前可用技能列表",
     ]

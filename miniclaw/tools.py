@@ -115,7 +115,7 @@ def handle_write(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None 
     os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as f:
         f.write(content)
-    return f"Successfully wrote to {path}"
+    return f"Successfully wrote to {abs_path}"
 
 
 def handle_edit(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None = None) -> str:
@@ -140,7 +140,7 @@ def handle_edit(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None =
     new_content = content.replace(old_string, new_string, 1)
     with open(abs_path, "w", encoding="utf-8") as f:
         f.write(new_content)
-    return f"Successfully edited {path}"
+    return f"Successfully edited {abs_path}"
 
 
 def handle_glob(
@@ -202,7 +202,7 @@ def handle_grep(
     pattern = args.get("pattern") or ""
     if not pattern:
         return json.dumps({"error": "grep 需要 pattern 参数"}, ensure_ascii=False)
-    search_path = args.get("path") or "."
+    search_path = args.get("path") or workspace_root
     skill_dirs = _registered_skill_dirs(context)
     try:
         abs_search = resolve_read_path(
@@ -365,7 +365,10 @@ def get_tool_schemas() -> list[dict]:
                 "If output is still too large with limit, results may be truncated."
             ),
             "parameters": {"type": "object", "properties": {
-                "path": {"type": "string", "description": "Relative path under workspace"},
+                "path": {
+                    "type": "string",
+                    "description": "The absolute path to the file to read (must be absolute, not relative)",
+                },
                 "offset": {
                     "type": "integer",
                     "description": "Start line, 0-based (default 0)",
@@ -380,7 +383,10 @@ def get_tool_schemas() -> list[dict]:
             "name": "write",
             "description": "Write content to a file (overwrites if exists, creates parent directories as needed).",
             "parameters": {"type": "object", "properties": {
-                "path": {"type": "string", "description": "Relative path under workspace"},
+                "path": {
+                    "type": "string",
+                    "description": "The absolute path to the file to write (must be absolute, not relative)",
+                },
                 "content": {"type": "string", "description": "File content to write"},
             }, "required": ["path", "content"]},
         }},
@@ -388,7 +394,10 @@ def get_tool_schemas() -> list[dict]:
             "name": "edit",
             "description": "Replace a unique string in a file. old_string must appear exactly once.",
             "parameters": {"type": "object", "properties": {
-                "path": {"type": "string", "description": "Relative path under workspace"},
+                "path": {
+                    "type": "string",
+                    "description": "The absolute path to the file to modify (must be absolute, not relative)",
+                },
                 "old_string": {"type": "string", "description": "The exact string to find (must appear once)"},
                 "new_string": {"type": "string", "description": "The replacement string"},
             }, "required": ["path", "old_string", "new_string"]},
@@ -397,11 +406,14 @@ def get_tool_schemas() -> list[dict]:
             "name": "glob",
             "description": (
                 "Find files matching a glob pattern within the workspace or a registered "
-                "skill directory (use an absolute pattern for skill dirs). "
+                "skill directory. Use absolute patterns (e.g. /path/to/ws/**/*.py). "
                 "Use ** for recursive matching. Results are capped (newest first)."
             ),
             "parameters": {"type": "object", "properties": {
-                "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.py', '*.md')"},
+                "pattern": {
+                    "type": "string",
+                    "description": "Absolute glob pattern (e.g. '/path/to/ws/**/*.py')",
+                },
             }, "required": ["pattern"]},
         }},
         {"type": "function", "function": {
@@ -412,7 +424,10 @@ def get_tool_schemas() -> list[dict]:
             ),
             "parameters": {"type": "object", "properties": {
                 "pattern": {"type": "string", "description": "Search pattern (regex)"},
-                "path": {"type": "string", "description": "Relative path to search in (default: workspace root)"},
+                "path": {
+                    "type": "string",
+                    "description": "Absolute path to search in (default: workspace root as absolute path)",
+                },
             }, "required": ["pattern"]},
         }},
         {"type": "function", "function": {
