@@ -191,6 +191,11 @@ class TestBuildSystemPrompt(unittest.TestCase):
             out = build_system_prompt([], workspace_root="/tmp/ws")
         self.assertIn("当前日期：2026-06-03", out)
 
+    def test_with_memory_block(self):
+        out = build_system_prompt([], memory_block="AUTO MEMORY SNAPSHOT")
+        self.assertIn("## Auto Memory", out)
+        self.assertIn("AUTO MEMORY SNAPSHOT", out)
+
 
 if __name__ == "__main__":
     unittest.main()

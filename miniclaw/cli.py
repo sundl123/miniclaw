@@ -12,9 +12,11 @@ from prompt_toolkit.formatted_text import HTML
 from miniclaw.api import create_client, run_turn_with_tools
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
-from miniclaw.settings import get_llm_config, get_context_config
+from miniclaw.settings import get_llm_config, get_context_config, get_memory_config
 from miniclaw.context import format_context_status, manual_compact, init_ctx_mgmt
 from miniclaw.skills import build_system_prompt, discover_skills
+from miniclaw.memory.store import MemoryStore
+from miniclaw.memory.status import format_memory_status
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
 from miniclaw.ui import print_banner, print_compact_progress, print_error, print_status
@@ -46,7 +48,19 @@ def _init_session(args: argparse.Namespace) -> dict:
     client = create_client(llm_cfg["api_key"], llm_cfg["base_url"])
 
     registry = discover_skills(workspace)
-    system_prompt = build_system_prompt(registry.list_metadata(), workspace_root=workspace)
+    memory_config = get_memory_config(workspace)
+    memory_store = None
+    memory_block = None
+    if memory_config.enabled:
+        memory_store = MemoryStore(memory_config)
+        memory_store.load_snapshot()
+        memory_block = memory_store.format_for_system_prompt()
+
+    system_prompt = build_system_prompt(
+        registry.list_metadata(),
+        workspace_root=workspace,
+        memory_block=memory_block,
+    )
 
     return {
         "client": client,
@@ -55,8 +69,10 @@ def _init_session(args: argparse.Namespace) -> dict:
         "workspace": workspace,
         "system_prompt": system_prompt,
         "skill_registry": registry,
-        "tools": get_tool_schemas(),
+        "tools": get_tool_schemas(include_memory=memory_config.enabled),
         "context_config": get_context_config(workspace),
+        "memory_config": memory_config,
+        "memory_store": memory_store,
     }
 
 
@@ -70,6 +86,7 @@ def _repl_loop(session: dict) -> None:
     skill_registry = session["skill_registry"]
     tools = session["tools"]
     context_config = session["context_config"]
+    memory_store = session.get("memory_store")
     messages = [{"role": "system", "content": system_prompt}]
 
     plan_dir = os.path.join(workspace, ".miniclaw", "plans")
@@ -79,6 +96,8 @@ def _repl_loop(session: dict) -> None:
         "workspace_root": workspace,
         "skill_registry": skill_registry,
     }
+    if memory_store is not None:
+        context["memory_store"] = memory_store
     init_ctx_mgmt(context)
 
     prompt_session = _create_prompt_session()
@@ -113,6 +132,12 @@ def _repl_loop(session: dict) -> None:
             continue
         if user_input == "/context":
             print_status(format_context_status(messages, context_config, context))
+            continue
+        if user_input in ("/memory", "/memory-status"):
+            if memory_store is None:
+                print_status("Memory 未启用（config.json memory.enabled=false）")
+            else:
+                print_status(format_memory_status(memory_store))
             continue
         if user_input == "/compact" or user_input.startswith("/compact "):
             extra = user_input[8:].strip() if user_input.startswith("/compact ") else ""

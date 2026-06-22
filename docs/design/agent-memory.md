@@ -2,9 +2,39 @@
 
 > 本文记录 miniclaw **跨会话持久记忆**功能的设计结论，作为后续实现的参考。
 
-**状态**：设计中
+**状态**：Phase 1 已实现
 **创建日期**：2026-06-05
-**最后更新**：2026-06-05
+**最后更新**：2026-06-22
+
+---
+
+## Phase 1 实现（当前）
+
+全局 auto memory，目录 `~/.miniclaw/memory/`。
+
+| 组件 | 行为 |
+|------|------|
+| **MEMORY.md** | 唯一大小受限（默认 25KB + 200 行）；启动时 **frozen** 注入 system prompt |
+| **其他文件 / 子目录** | 不限大小；模型自管；仅经 `memory` tool 读写 |
+| **memory tool** | `read` / `write` / `edit` / `list` / `delete` / `status` |
+| **预算反馈** | 写 MEMORY.md 前 preflight；成功/失败均返回 `memory_md_usage`；≥80% 软 warning |
+| **防御** | 磁盘超限 → 启动截断注入；禁止 delete MEMORY.md |
+| **CLI** | `memory.enabled` 开关；`/memory` 或 `/memory-status` |
+
+配置（`config.json`）：
+
+```json
+"memory": {
+  "enabled": false,
+  "memory_md_max_bytes": 25600,
+  "memory_md_max_lines": 200,
+  "warn_threshold_pct": 80
+}
+```
+
+代码：`miniclaw/memory/`（`store.py`, `budget.py`, `tool.py`, …）
+
+Phase 1 **未做**：records、/reflect、AGENTS.md 加载、auto-skill。
 
 ---
 
@@ -343,19 +373,19 @@ miniclaw/
 
 ### 10.3 MVP 范围
 
-最小可验证版本（MVP）建议先做：
+**Phase 1（已完成）**
 
-- [ ] `config.memory.enabled` 开关
-- [ ] records 实时写入（JSONL）
-- [ ] 一次手动心跳（`/reflect`），跑通 records → memory 链路
-- [ ] MEMORY.md 注入 system prompt
-- [ ] 按需 read 参考文件
+- [x] `config.memory.enabled` 开关
+- [x] `~/.miniclaw/memory/MEMORY.md` frozen 注入
+- [x] `memory` tool（路径 sandbox + MEMORY.md preflight + usage 反馈）
+- [x] topic 文件与子目录不限大小
+- [x] `/memory-status`
 
-先**不做**：
-- 自动定时心跳（先手动）
-- auto-skill 生成（先稳定 memory）
-- records 归档 / 压缩
-- 心跳失败回滚
+**Phase 2（计划中）**
+
+- [ ] records JSONL
+- [ ] `/reflect` heartbeat
+- [ ] auto-skill 生成
 
 ---
 

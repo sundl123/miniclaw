@@ -23,6 +23,7 @@ from miniclaw.settings import get_tools_config
 from miniclaw.skills import normalize_skill_name
 from miniclaw.tool_output import cap_tool_result, truncate_read_output
 from miniclaw.tools_config import ToolsConfig
+from miniclaw.memory.tool import get_memory_tool_schema, handle_memory
 from miniclaw.ui import print_tool_call
 
 
@@ -275,6 +276,7 @@ TOOL_HANDLERS = {
     "grep": handle_grep,
     "bash": handle_bash,
     "Skill": handle_skill,
+    "memory": handle_memory,
 }
 
 
@@ -295,6 +297,8 @@ def _print_tool_invocation(name: str, args: dict) -> None:
         detail = f"pattern={args.get('pattern', '')} path={args.get('path', '.')}"
     elif name == "Skill":
         detail = f"skill={args.get('skill', '')}"
+    elif name == "memory":
+        detail = f"action={args.get('action', '')} path={args.get('path', '')}"
     elif name in PLAN_MODE_HANDLERS:
         pass
     print_tool_call(name, detail)
@@ -338,6 +342,8 @@ def execute_tool(
             result = handler(args, root, tools_cfg=cfg, context=ctx)
         elif name == "Skill":
             result = handler(args, root, context=ctx)
+        elif name == "memory":
+            result = handler(args, context=ctx)
         else:
             result = handler(args, root, tools_cfg=cfg)
     except PermissionError as e:
@@ -354,9 +360,9 @@ def execute_tool(
 # Tool Schema
 # ---------------------------------------------------------------------------
 
-def get_tool_schemas() -> list[dict]:
+def get_tool_schemas(*, include_memory: bool = False) -> list[dict]:
     """返回所有工具的 OpenAI function-calling 风格定义（含 plan mode 工具）。"""
-    return [
+    schemas = [
         {"type": "function", "function": {
             "name": "read",
             "description": (
@@ -451,4 +457,7 @@ def get_tool_schemas() -> list[dict]:
                 },
             }, "required": ["skill"]},
         }},
-    ] + get_plan_tool_schemas()
+    ]
+    if include_memory:
+        schemas.append(get_memory_tool_schema())
+    return schemas + get_plan_tool_schemas()

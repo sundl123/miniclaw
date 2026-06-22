@@ -132,7 +132,12 @@ def scan_skills_metadata(skills_dir: str) -> list[dict]:
     ]
 
 
-def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str = None) -> str:
+def build_system_prompt(
+    skill_metadata_list: list[dict],
+    *,
+    workspace_root: str = None,
+    memory_block: str | None = None,
+) -> str:
     """根据技能元数据列表拼接 system prompt。"""
     env_lines = ""
     path_hint = "文件工具（read/write/edit/grep/glob）的 path 必须使用绝对路径。"
@@ -161,4 +166,6 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
             lines.append(f"- {s['name']}: {s['description']}")
     else:
         lines.append("（暂无可用 skill）")
+    if memory_block:
+        lines.extend(["", "## Auto Memory", memory_block])
     return "\n".join(lines)

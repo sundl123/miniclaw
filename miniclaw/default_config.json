@@ -34,6 +34,12 @@
       "max_summary_output_tokens": 4096
     }
   },
+  "memory": {
+    "enabled": false,
+    "memory_md_max_bytes": 25600,
+    "memory_md_max_lines": 200,
+    "warn_threshold_pct": 80
+  },
   "tools": {
     "read": {
       "max_file_bytes": 262144,
