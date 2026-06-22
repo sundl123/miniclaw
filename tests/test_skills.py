@@ -38,6 +38,61 @@ description: "Hello \\"quoted\\""
 ---'''
         self.assertEqual(parse_frontmatter(content)["description"], 'Hello "quoted"')
 
+    def test_block_scalar_pipe(self):
+        content = """---
+name: firecrawl-scrape
+description: |
+  Extract clean markdown from any URL.
+  Use when the user says scrape.
+---"""
+        meta = parse_frontmatter(content)
+        self.assertEqual(meta["name"], "firecrawl-scrape")
+        self.assertIn("Extract clean markdown", meta["description"])
+        self.assertIn("scrape", meta["description"])
+        self.assertNotEqual(meta["description"], "|")
+
+    def test_folded_scalar_strip(self):
+        content = """---
+name: fireworks-tech-graph
+description: >-
+  Use when the user wants to create any technical diagram -
+  architecture, data flow, or concept map.
+---"""
+        meta = parse_frontmatter(content)
+        self.assertEqual(meta["name"], "fireworks-tech-graph")
+        self.assertIn("technical diagram", meta["description"])
+        self.assertNotIn("\n", meta["description"])
+
+    def test_folded_scalar_gt(self):
+        content = """---
+name: download-anything
+description: >
+  Download files from the web when the user asks to fetch assets.
+---"""
+        meta = parse_frontmatter(content)
+        self.assertIn("Download files", meta["description"])
+
+    def test_extra_yaml_keys(self):
+        content = """---
+name: firecrawl
+description: |
+  Web scraping via Firecrawl CLI.
+allowed-tools:
+  - Bash(firecrawl *)
+  - Bash(npx firecrawl *)
+---"""
+        meta = parse_frontmatter(content)
+        self.assertEqual(meta["name"], "firecrawl")
+        self.assertIn("Firecrawl CLI", meta["description"])
+        self.assertEqual(meta["allowed-tools"], ["Bash(firecrawl *)", "Bash(npx firecrawl *)"])
+
+    def test_invalid_yaml_returns_empty(self):
+        content = """---
+name: broken
+description: [unclosed
+---"""
+        self.assertEqual(parse_frontmatter(content), {})
+
 
 class TestStripFrontmatter(unittest.TestCase):
     def test_strips_block(self):
@@ -76,6 +131,27 @@ class TestScanSkillsMetadata(unittest.TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["name"], "foo")
         self.assertEqual(result[0]["description"], "Foo skill")
+
+    def test_scan_multiline_description(self):
+        with tempfile.TemporaryDirectory() as d:
+            skill_dir = os.path.join(d, "firecrawl-scrape")
+            os.makedirs(skill_dir)
+            with open(os.path.join(skill_dir, "SKILL.md"), "w", encoding="utf-8") as f:
+                f.write(
+                    "---\n"
+                    "name: firecrawl-scrape\n"
+                    "description: |\n"
+                    "  Extract clean markdown from any URL, including JavaScript-rendered SPAs.\n"
+                    "  Use this skill whenever the user provides a URL.\n"
+                    "allowed-tools:\n"
+                    "  - Bash(firecrawl *)\n"
+                    "---\n"
+                )
+            result = scan_skills_metadata(d)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["name"], "firecrawl-scrape")
+        self.assertIn("Extract clean markdown", result[0]["description"])
+        self.assertNotEqual(result[0]["description"], "|")
 
 
 class TestDiscoverSkills(unittest.TestCase):
