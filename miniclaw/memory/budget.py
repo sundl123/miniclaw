@@ -25,12 +25,14 @@ class ContentMeasure:
 
 @dataclass(frozen=True)
 class MemoryMdUsage:
+    """MEMORY.md capacity snapshot (0–100 integers for *_percent fields)."""
+
     used_bytes: int
     limit_bytes: int
     used_lines: int
     limit_lines: int
-    pct_bytes: int
-    pct_lines: int
+    bytes_percent: int
+    lines_percent: int
     display: str
 
     def to_dict(self) -> dict:
@@ -39,8 +41,8 @@ class MemoryMdUsage:
             "limit_bytes": self.limit_bytes,
             "used_lines": self.used_lines,
             "limit_lines": self.limit_lines,
-            "pct_bytes": self.pct_bytes,
-            "pct_lines": self.pct_lines,
+            "bytes_percent": self.bytes_percent,
+            "lines_percent": self.lines_percent,
             "display": self.display,
         }
 
@@ -83,8 +85,8 @@ def build_usage(measure: ContentMeasure, config: MemoryConfig) -> MemoryMdUsage:
         limit_bytes=config.memory_md_max_bytes,
         used_lines=measure.used_lines,
         limit_lines=config.memory_md_max_lines,
-        pct_bytes=_pct(measure.used_bytes, config.memory_md_max_bytes),
-        pct_lines=_pct(measure.used_lines, config.memory_md_max_lines),
+        bytes_percent=_pct(measure.used_bytes, config.memory_md_max_bytes),
+        lines_percent=_pct(measure.used_lines, config.memory_md_max_lines),
         display=_format_display(measure, config),
     )
 

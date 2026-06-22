@@ -18,6 +18,9 @@
 | **其他文件 / 子目录** | 不限大小；模型自管；仅经 `memory` tool 读写 |
 | **memory tool** | `read` / `write` / `edit` / `list` / `delete` / `status` |
 | **预算反馈** | 写 MEMORY.md 前 preflight；成功/失败均返回 `memory_md_usage`；≥80% 软 warning |
+
+`memory_md_usage` 字段：`used_bytes` / `limit_bytes` / `used_lines` / `limit_lines`、
+`bytes_percent` / `lines_percent`（0–100）、`display`（人类可读摘要，如 `42% — 8.5/25.0 KB, 120/200 lines`）。
 | **防御** | 磁盘超限 → 启动截断注入；禁止 delete MEMORY.md |
 | **CLI** | `memory.enabled` 开关；`/memory` 或 `/memory-status` |
 
