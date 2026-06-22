@@ -12,7 +12,6 @@ from miniclaw.config import (
     resolve_path,
     resolve_read_path,
 )
-from miniclaw.context.tokens import estimate_text_tokens
 from miniclaw.plan_mode import (
     PLAN_MODE_HANDLERS,
     check_plan_mode,
@@ -21,7 +20,7 @@ from miniclaw.plan_mode import (
 from miniclaw.read_file import FileTooLargeError, read_file_lines
 from miniclaw.settings import get_tools_config
 from miniclaw.skills import normalize_skill_name
-from miniclaw.tool_output import cap_tool_result, truncate_read_output
+from miniclaw.tool_output import cap_tool_result, enforce_read_output_limits
 from miniclaw.tools_config import ToolsConfig
 from miniclaw.memory.tool import get_memory_tool_schema, handle_memory
 from miniclaw.ui import print_tool_call
@@ -87,23 +86,14 @@ def handle_read(
     except FileTooLargeError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
 
-    content = result.content
-    est = estimate_text_tokens(content)
-    if est > cfg.max_output_tokens:
-        if limit is None:
-            return json.dumps(
-                {
-                    "error": (
-                        f"Read output (~{est:,} tokens) exceeds maximum allowed "
-                        f"({cfg.max_output_tokens:,} tokens). Use offset and limit "
-                        f"(0-based) to read specific portions of the file."
-                    ),
-                },
-                ensure_ascii=False,
-            )
-        content = truncate_read_output(content, cfg.max_output_tokens)
-
-    return content
+    limited = enforce_read_output_limits(
+        result.content,
+        limit=limit,
+        max_output_tokens=cfg.max_output_tokens,
+    )
+    if limited.error:
+        return json.dumps({"error": limited.error}, ensure_ascii=False)
+    return limited.content
 
 
 def handle_write(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None = None) -> str:
@@ -343,7 +333,7 @@ def execute_tool(
         elif name == "Skill":
             result = handler(args, root, context=ctx)
         elif name == "memory":
-            result = handler(args, context=ctx)
+            result = handler(args, context=ctx, tools_cfg=cfg)
         else:
             result = handler(args, root, tools_cfg=cfg)
     except PermissionError as e:

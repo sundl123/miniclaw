@@ -17,10 +17,8 @@
 | **MEMORY.md** | 唯一大小受限（默认 25KB + 200 行）；启动时 **frozen** 注入 system prompt |
 | **其他文件 / 子目录** | 不限大小；模型自管；仅经 `memory` tool 读写 |
 | **memory tool** | `read` / `write` / `edit` / `list` / `delete` / `status` |
-| **预算反馈** | 写 MEMORY.md 前 preflight；成功/失败均返回 `memory_md_usage`；≥80% 软 warning |
-
-`memory_md_usage` 字段：`used_bytes` / `limit_bytes` / `used_lines` / `limit_lines`、
-`bytes_percent` / `lines_percent`（0–100）、`display`（人类可读摘要，如 `42% — 8.5/25.0 KB, 120/200 lines`）。
+| **预算反馈** | 写 MEMORY.md 前 preflight；成功/失败均返回 `memory_md_usage`（含 `bytes_percent` / `lines_percent` / `display`）；≥80% 软 warning |
+| **tool 输出防爆** | `read` 受 `tools.read` 约束（大文件需 offset/limit）；`list` 复用 `tools.max_glob_files`；write/edit args 经 micro-compact 压缩 |
 | **防御** | 磁盘超限 → 启动截断注入；禁止 delete MEMORY.md |
 | **CLI** | `memory.enabled` 开关；`/memory` 或 `/memory-status` |
 

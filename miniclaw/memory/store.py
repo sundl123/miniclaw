@@ -24,7 +24,9 @@ from miniclaw.memory.paths import (
     resolve_memory_path,
 )
 from miniclaw.memory.prompt import format_memory_system_block
-from miniclaw.read_file import read_file_lines
+from miniclaw.read_file import FileTooLargeError, read_file_lines
+from miniclaw.tool_output import enforce_read_output_limits
+from miniclaw.tools_config import ReadToolConfig
 
 
 class MemoryStore:
@@ -237,27 +239,53 @@ class MemoryStore:
         rel_path: str,
         offset: int = 0,
         limit: int | None = None,
+        *,
+        read_cfg: ReadToolConfig | None = None,
     ) -> dict:
         norm = normalize_memory_rel_path(rel_path)
         abs_path = resolve_memory_path(norm)
         if not os.path.isfile(abs_path):
             return self._failure_response(f"File not found: {norm}")
 
+        cfg = read_cfg or ReadToolConfig()
         try:
-            result = read_file_lines(abs_path, offset=offset, limit=limit)
+            result = read_file_lines(
+                abs_path,
+                offset=offset,
+                limit=limit,
+                max_file_bytes=cfg.max_file_bytes if limit is None else None,
+            )
+        except FileTooLargeError as e:
+            return self._failure_response(str(e))
         except OSError as e:
             return self._failure_response(f"Failed to read {norm}: {e}")
+
+        limited = enforce_read_output_limits(
+            result.content,
+            limit=limit,
+            max_output_tokens=cfg.max_output_tokens,
+        )
+        if limited.error:
+            return self._failure_response(limited.error)
 
         resp = self._success_response(
             action="read",
             path=norm,
             message=f"Read {norm}",
         )
-        resp["content"] = result.content
+        resp["content"] = limited.content
         resp["total_lines"] = result.total_lines
+        if limited.truncated:
+            resp["content_truncated"] = True
         return resp
 
-    def list_files(self, rel_dir: str = "", recursive: bool = False) -> dict:
+    def list_files(
+        self,
+        rel_dir: str = "",
+        recursive: bool = False,
+        *,
+        max_entries: int = 500,
+    ) -> dict:
         norm_dir = ""
         if rel_dir:
             norm_dir = normalize_memory_rel_path(rel_dir)
@@ -292,12 +320,23 @@ class MemoryStore:
                 size = os.path.getsize(full) if os.path.isfile(full) else None
                 entries.append({"path": rel, "type": kind, "bytes": size})
 
+        total = len(entries)
+        if total > max_entries:
+            shown = entries[:max_entries]
+            message = f"Listed {len(shown)} of {total} entries"
+        else:
+            shown = entries
+            message = f"Listed {total} entries"
+
         resp = self._success_response(
             action="list",
             path=norm_dir or ".",
-            message=f"Listed {len(entries)} entries",
+            message=message,
         )
-        resp["entries"] = entries
+        resp["entries"] = shown
+        if total > max_entries:
+            resp["entries_truncated"] = True
+            resp["total_entries"] = total
         return resp
 
     def delete_file(self, rel_path: str) -> dict:

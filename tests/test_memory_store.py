@@ -8,6 +8,7 @@ from miniclaw.memory.budget import ContentMeasure
 from miniclaw.memory.config import MEMORY_MD_FILENAME, MemoryConfig
 from miniclaw.memory.paths import normalize_memory_rel_path, resolve_memory_path
 from miniclaw.memory.store import MemoryStore
+from miniclaw.tools_config import ReadToolConfig
 
 
 class TestMemoryPaths(unittest.TestCase):
@@ -119,6 +120,40 @@ class TestMemoryStore(unittest.TestCase):
         self.assertFalse(result["success"])
         with open(self._md_path(), encoding="utf-8") as f:
             self.assertEqual(f.read(), "short")
+
+    def test_read_rejects_oversized_topic_without_limit(self):
+        notes_dir = os.path.join(self.memory_root, "notes")
+        os.makedirs(notes_dir, exist_ok=True)
+        huge_path = os.path.join(notes_dir, "huge.md")
+        with open(huge_path, "wb") as f:
+            f.write(b"x" * 5000)
+        read_cfg = ReadToolConfig(max_file_bytes=1000, max_output_tokens=8000)
+        result = self.store.read_file("notes/huge.md", read_cfg=read_cfg)
+        self.assertFalse(result["success"])
+        self.assertIn("exceeds maximum", result["error"].lower())
+
+    def test_read_truncates_with_limit_when_output_huge(self):
+        lines = "\n".join("word " * 50 for _ in range(100)) + "\n"
+        self.store.write_file("notes/dense.md", lines)
+        read_cfg = ReadToolConfig(max_file_bytes=1_000_000, max_output_tokens=50)
+        result = self.store.read_file(
+            "notes/dense.md", offset=0, limit=100, read_cfg=read_cfg,
+        )
+        self.assertTrue(result["success"])
+        self.assertTrue(result.get("content_truncated"))
+        self.assertIn("[truncated]", result["content"])
+
+    def test_list_truncates_entries(self):
+        many_dir = os.path.join(self.memory_root, "many")
+        os.makedirs(many_dir, exist_ok=True)
+        for i in range(10):
+            with open(os.path.join(many_dir, f"f{i}.txt"), "w", encoding="utf-8") as f:
+                f.write("x")
+        result = self.store.list_files("many", max_entries=3)
+        self.assertTrue(result["success"])
+        self.assertEqual(len(result["entries"]), 3)
+        self.assertTrue(result["entries_truncated"])
+        self.assertEqual(result["total_entries"], 10)
 
 
 if __name__ == "__main__":
