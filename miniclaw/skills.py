@@ -5,6 +5,8 @@ import os
 import re
 from dataclasses import dataclass
 
+import yaml
+
 from miniclaw.config import get_local_iso_date
 from miniclaw.dirs import get_user_data_dir
 
@@ -16,18 +18,21 @@ def parse_frontmatter(content: str) -> dict:
     match = re.match(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
     if not match:
         return {}
-    block = match.group(1)
-    data = {}
-    for line in block.split("\n"):
-        m = re.match(r"^(\w+):\s*(.*)$", line.strip())
-        if m:
-            key, val = m.group(1).strip(), m.group(2).strip()
-            if val.startswith('"') and val.endswith('"'):
-                val = val[1:-1].replace('\\"', '"')
-            elif val.startswith("'") and val.endswith("'"):
-                val = val[1:-1].replace("\\'", "'")
-            data[key] = val
-    return data
+    try:
+        data = yaml.safe_load(match.group(1))
+    except yaml.YAMLError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _meta_str(meta: dict, key: str, default: str = "") -> str:
+    """从 frontmatter meta 中取出字符串字段并规范化。"""
+    val = meta.get(key, default)
+    if val is None:
+        return default
+    if not isinstance(val, str):
+        val = str(val)
+    return val.strip() or default
 
 
 def strip_frontmatter(content: str) -> str:
@@ -103,10 +108,10 @@ def _scan_skills_dir(skills_dir: str, source: str) -> dict[str, SkillEntry]:
         except OSError:
             continue
         meta = parse_frontmatter(content)
-        name = meta.get("name") or dir_name
+        name = _meta_str(meta, "name") or dir_name
         result[name] = SkillEntry(
             name=name,
-            description=meta.get("description", "(无描述)"),
+            description=_meta_str(meta, "description", "(无描述)"),
             skill_dir=os.path.abspath(skill_dir),
             skill_md_path=os.path.abspath(skill_md),
             source=source,
@@ -132,7 +137,12 @@ def scan_skills_metadata(skills_dir: str) -> list[dict]:
     ]
 
 
-def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str = None) -> str:
+def build_system_prompt(
+    skill_metadata_list: list[dict],
+    *,
+    workspace_root: str = None,
+    memory_block: str | None = None,
+) -> str:
     """根据技能元数据列表拼接 system prompt。"""
     env_lines = ""
     path_hint = "文件工具（read/write/edit/grep/glob）的 path 必须使用绝对路径。"
@@ -161,4 +171,6 @@ def build_system_prompt(skill_metadata_list: list[dict], *, workspace_root: str 
             lines.append(f"- {s['name']}: {s['description']}")
     else:
         lines.append("（暂无可用 skill）")
+    if memory_block:
+        lines.extend(["", "## Auto Memory", memory_block])
     return "\n".join(lines)

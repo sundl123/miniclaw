@@ -15,6 +15,12 @@ from miniclaw.context.config import (
 )
 from miniclaw.tools_config import ReadToolConfig, ToolsConfig
 from miniclaw.dirs import get_user_data_dir
+from miniclaw.memory.config import (
+    DEFAULT_MEMORY_MD_MAX_BYTES,
+    DEFAULT_MEMORY_MD_MAX_LINES,
+    DEFAULT_WARN_THRESHOLD_PCT,
+    MemoryConfig,
+)
 
 _CONFIG_FILENAME = "config.json"
 _CONFIG_SUBDIR = ".miniclaw"
@@ -176,6 +182,27 @@ def get_context_config(workspace_root: str) -> ContextConfig:
             keep_recent_messages=int(sum_raw.get("keep_recent_messages", 6)),
             max_summary_output_tokens=int(sum_raw.get("max_summary_output_tokens", 4096)),
         ),
+    )
+
+
+def get_memory_config(workspace_root: str) -> MemoryConfig:
+    """Load auto memory config from merged config."""
+    raw = load_merged_config(workspace_root).get("memory", {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    if os.environ.get("MINICLAW_MEMORY_ENABLED", "").strip() in ("1", "true", "yes"):
+        enabled = True
+    elif os.environ.get("MINICLAW_MEMORY_ENABLED", "").strip() in ("0", "false", "no"):
+        enabled = False
+    else:
+        enabled = bool(raw.get("enabled", False))
+
+    return MemoryConfig(
+        enabled=enabled,
+        memory_md_max_bytes=int(raw.get("memory_md_max_bytes", DEFAULT_MEMORY_MD_MAX_BYTES)),
+        memory_md_max_lines=int(raw.get("memory_md_max_lines", DEFAULT_MEMORY_MD_MAX_LINES)),
+        warn_threshold_pct=int(raw.get("warn_threshold_pct", DEFAULT_WARN_THRESHOLD_PCT)),
     )
 
 

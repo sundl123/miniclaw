@@ -1,7 +1,16 @@
 """Shared helpers for capping tool output size."""
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from miniclaw.context.tokens import estimate_text_tokens
+
+
+@dataclass(frozen=True)
+class ReadOutputLimitResult:
+    content: str
+    error: str | None = None
+    truncated: bool = False
 
 
 def format_file_size(n: int) -> str:
@@ -46,3 +55,28 @@ def truncate_read_output(content: str, max_tokens: int) -> str:
     )
     keep = max(0, max_chars - len(footer))
     return content[:keep] + footer
+
+
+def enforce_read_output_limits(
+    content: str,
+    *,
+    limit: int | None,
+    max_output_tokens: int,
+) -> ReadOutputLimitResult:
+    """Apply read output token limits: error without limit, truncate when limit is set."""
+    est = estimate_text_tokens(content)
+    if est <= max_output_tokens:
+        return ReadOutputLimitResult(content=content)
+
+    if limit is None:
+        return ReadOutputLimitResult(
+            content="",
+            error=(
+                f"Read output (~{est:,} tokens) exceeds maximum allowed "
+                f"({max_output_tokens:,} tokens). Use offset and limit "
+                f"(0-based) to read specific portions of the file."
+            ),
+        )
+
+    truncated = truncate_read_output(content, max_output_tokens)
+    return ReadOutputLimitResult(content=truncated, truncated=True)

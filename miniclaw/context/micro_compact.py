@@ -28,6 +28,12 @@ TOOL_COMPACT_POLICY: dict[str, CompactPolicy] = {
     "glob": CompactPolicy(compact_output=True),
     "grep": CompactPolicy(compact_output=True),
     "bash": CompactPolicy(compact_output=True),
+    "memory": CompactPolicy(
+        compact_input_fields=frozenset({"content"}),
+        compact_output=True,
+        truncate_input_fields=frozenset({"old_string", "new_string"}),
+        truncate_chars=80,
+    ),
     "enter_plan_mode": CompactPolicy(compact_output=False),
     "exit_plan_mode": CompactPolicy(compact_output=False),
 }
@@ -66,6 +72,9 @@ def _compact_arguments(tool_name: str, args: dict, policy: CompactPolicy) -> dic
 
     if tool_name == "write" and "path" in out:
         out.setdefault("_hint", "content on disk; use read to view")
+
+    if tool_name == "memory" and out.get("action") == "write" and "path" in out:
+        out.setdefault("_hint", "content on disk; use memory read to view")
 
     return out
 

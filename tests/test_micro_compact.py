@@ -114,6 +114,83 @@ class TestMicroCompact(unittest.TestCase):
         micro_compact(msgs, _cfg())
         self.assertGreaterEqual(count_compacted(msgs), 1)
 
+    def test_memory_write_compacts_arguments(self):
+        content = "y" * 500
+        msgs = [
+            {"role": "system", "content": "s"},
+            {"role": "user", "content": "w"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_m1",
+                    "type": "function",
+                    "function": {
+                        "name": "memory",
+                        "arguments": json.dumps({
+                            "action": "write",
+                            "path": "notes/a.md",
+                            "content": content,
+                        }),
+                    },
+                }],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "call_m1",
+                "content": json.dumps({"success": True, "message": "ok"}),
+            },
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_m2",
+                    "type": "function",
+                    "function": {"name": "memory", "arguments": '{"action":"status"}'},
+                }],
+            },
+            {"role": "tool", "tool_call_id": "call_m2", "content": '{"success": true}'},
+        ]
+        micro_compact(msgs, _cfg())
+        args = json.loads(msgs[2]["tool_calls"][0]["function"]["arguments"])
+        self.assertTrue(args.get("_compacted"))
+        self.assertNotIn("content", args)
+        self.assertEqual(args.get("_content_chars"), 500)
+        self.assertIn("memory read", args.get("_hint", ""))
+
+    def test_memory_read_compacts_stale_result(self):
+        big = json.dumps({"success": True, "content": "x" * 500})
+        msgs = [
+            {"role": "system", "content": "sys"},
+            {"role": "user", "content": "go"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_r1",
+                    "type": "function",
+                    "function": {
+                        "name": "memory",
+                        "arguments": json.dumps({"action": "read", "path": "notes/a.md"}),
+                    },
+                }],
+            },
+            {"role": "tool", "tool_call_id": "call_r1", "content": big},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{
+                    "id": "call_r2",
+                    "type": "function",
+                    "function": {"name": "memory", "arguments": '{"action":"status"}'},
+                }],
+            },
+            {"role": "tool", "tool_call_id": "call_r2", "content": '{"success": true}'},
+        ]
+        micro_compact(msgs, _cfg())
+        self.assertTrue(msgs[3].get("_compacted"))
+        self.assertIn("[compacted] memory", msgs[3]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()
