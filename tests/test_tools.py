@@ -4,7 +4,7 @@ import os
 import tempfile
 import unittest
 
-from miniclaw.config import resolve_path
+from miniclaw.config import resolve_glob_pattern, resolve_path, resolve_read_path
 from miniclaw.tools import (
     handle_read,
     handle_write,
@@ -12,6 +12,7 @@ from miniclaw.tools import (
     handle_glob,
     handle_grep,
     handle_bash,
+    handle_skill,
     execute_tool,
     get_tool_schemas,
 )
@@ -24,6 +25,7 @@ from miniclaw.plan_mode import (
 )
 from miniclaw.settings import load_workspace_config, get_plan_allowed_patterns
 from miniclaw.tools_config import ReadToolConfig, ToolsConfig
+from miniclaw.skills import SkillEntry, SkillRegistry
 
 
 class TestResolvePath(unittest.TestCase):
@@ -36,6 +38,153 @@ class TestResolvePath(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             with self.assertRaises(PermissionError):
                 resolve_path("../../../etc/passwd", root)
+
+    def test_absolute_workspace_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = os.path.join(root, "docs", "report.md")
+            resolved = resolve_path(target, root)
+            self.assertEqual(resolved, os.path.normpath(target))
+
+    def test_absolute_outside_workspace_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with self.assertRaises(PermissionError):
+                resolve_path("/etc/passwd", root)
+
+
+class TestResolveReadPath(unittest.TestCase):
+    def test_absolute_workspace_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "f.txt")
+            with open(p, "w") as f:
+                f.write("x")
+            resolved = resolve_read_path(p, root)
+            self.assertEqual(resolved, os.path.normpath(p))
+
+    def test_registered_skill_dir_allowed(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.md")
+                with open(ref, "w") as f:
+                    f.write("ref")
+                resolved = resolve_read_path(
+                    ref, root, registered_skill_dirs=frozenset({skill_dir}),
+                )
+                self.assertEqual(resolved, os.path.normpath(ref))
+
+    def test_unregistered_skill_dir_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.md")
+                with open(ref, "w") as f:
+                    f.write("ref")
+                with self.assertRaises(PermissionError):
+                    resolve_read_path(ref, root)
+
+    def test_outside_workspace_and_skill_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                with tempfile.TemporaryDirectory() as other:
+                    secret = os.path.join(other, "secret.txt")
+                    with open(secret, "w") as f:
+                        f.write("secret")
+                    with self.assertRaises(PermissionError):
+                        resolve_read_path(
+                            secret, root, registered_skill_dirs=frozenset({skill_dir}),
+                        )
+
+
+class TestResolveGlobPattern(unittest.TestCase):
+    def test_relative_pattern_uses_workspace(self):
+        with tempfile.TemporaryDirectory() as root:
+            full, base = resolve_glob_pattern("**/*.py", root)
+            self.assertEqual(base, os.path.normpath(root))
+            self.assertEqual(full, os.path.join(root, "**/*.py"))
+
+    def test_absolute_pattern_in_registered_skill_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                pattern = os.path.join(skill_dir, "**", "*.md")
+                full, base = resolve_glob_pattern(
+                    pattern, root, registered_skill_dirs=frozenset({skill_dir}),
+                )
+                self.assertEqual(full, pattern)
+                self.assertEqual(base, os.path.normpath(skill_dir))
+
+
+class TestHandleSkill(unittest.TestCase):
+    def _make_registry(self, skill_dir: str, name: str = "demo") -> SkillRegistry:
+        md = os.path.join(skill_dir, "SKILL.md")
+        return SkillRegistry({
+            name: SkillEntry(
+                name=name,
+                description="Demo",
+                skill_dir=os.path.abspath(skill_dir),
+                skill_md_path=md,
+                source="global",
+            ),
+        })
+
+    def test_load_skill_body(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                md = os.path.join(skill_dir, "SKILL.md")
+                with open(md, "w") as f:
+                    f.write("---\nname: demo\ndescription: d\n---\n# Demo skill")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
+                out = handle_skill({"skill": "/demo"}, root, context=ctx)
+                self.assertIn("Base directory for this skill:", out)
+                self.assertIn("# Demo skill", out)
+
+    def test_read_registered_skill_without_load(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("reference content")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
+                read_out = handle_read({"path": ref}, root, context=ctx)
+                self.assertIn("reference content", read_out)
+
+    def test_read_unregistered_skill_dir_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("secret")
+                ctx = {"skill_registry": SkillRegistry()}
+                out = handle_read({"path": ref}, root, context=ctx)
+                self.assertIn("error", json.loads(out))
+
+    def test_grep_in_registered_skill_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.txt")
+                with open(ref, "w") as f:
+                    f.write("findme here\n")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
+                out = handle_grep(
+                    {"pattern": "findme", "path": skill_dir}, root, context=ctx,
+                )
+                self.assertIn("findme", out)
+
+    def test_glob_in_registered_skill_dir(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as skill_dir:
+                ref = os.path.join(skill_dir, "ref.md")
+                with open(ref, "w") as f:
+                    f.write("x")
+                pattern = os.path.join(skill_dir, "*.md")
+                ctx = {"skill_registry": self._make_registry(skill_dir)}
+                out = handle_glob({"pattern": pattern}, root, context=ctx)
+                self.assertIn("ref.md", out)
+
+    def test_unknown_skill(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = {"skill_registry": SkillRegistry()}
+            out = handle_skill({"skill": "missing"}, root, context=ctx)
+            data = json.loads(out)
+            self.assertIn("error", data)
+            self.assertIn("missing", data["error"])
 
 
 class TestHandleRead(unittest.TestCase):
@@ -121,6 +270,15 @@ class TestHandleWrite(unittest.TestCase):
             out = handle_write({"content": "x"}, root)
             self.assertIn("error", json.loads(out))
 
+    def test_write_absolute_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            target = os.path.join(root, "docs", "report.md")
+            out = handle_write({"path": target, "content": "hello"}, root)
+            self.assertIn("Successfully", out)
+            self.assertIn(os.path.normpath(target), out)
+            with open(target) as f:
+                self.assertEqual(f.read(), "hello")
+
 
 class TestHandleEdit(unittest.TestCase):
     def test_edit_exact_match(self):
@@ -158,6 +316,19 @@ class TestHandleEdit(unittest.TestCase):
                 f.write("hello")
             out = handle_edit({"path": "f.txt", "old_string": "", "new_string": "x"}, root)
             self.assertIn("error", json.loads(out))
+
+    def test_edit_absolute_path(self):
+        with tempfile.TemporaryDirectory() as root:
+            p = os.path.join(root, "f.txt")
+            with open(p, "w") as f:
+                f.write("hello world")
+            out = handle_edit(
+                {"path": p, "old_string": "world", "new_string": "python"}, root,
+            )
+            self.assertIn("Successfully", out)
+            self.assertIn(os.path.normpath(p), out)
+            with open(p) as f:
+                self.assertEqual(f.read(), "hello python")
 
 
 class TestHandleGlob(unittest.TestCase):
@@ -257,12 +428,12 @@ class TestExecuteTool(unittest.TestCase):
 
 
 class TestGetToolSchemas(unittest.TestCase):
-    def test_returns_eight_tools(self):
+    def test_returns_nine_tools(self):
         schemas = get_tool_schemas()
-        self.assertEqual(len(schemas), 8)
+        self.assertEqual(len(schemas), 9)
         names = {s["function"]["name"] for s in schemas}
         self.assertEqual(names, {
-            "read", "write", "edit", "glob", "grep", "bash",
+            "read", "write", "edit", "glob", "grep", "bash", "Skill",
             "enter_plan_mode", "exit_plan_mode",
         })
 
@@ -344,6 +515,13 @@ class TestIsPlanDirWrite(unittest.TestCase):
             ctx = {"plan_dir": plan_dir, "workspace_root": root}
             self.assertTrue(_is_plan_dir_write("edit", {"path": ".miniclaw/plans/my-plan.md"}, ctx))
 
+    def test_write_to_plan_dir_absolute(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            plan_file = os.path.join(plan_dir, "code-review-service-layer.md")
+            ctx = {"plan_dir": plan_dir, "workspace_root": root}
+            self.assertTrue(_is_plan_dir_write("write", {"path": plan_file}, ctx))
+
     def test_bash_not_plan_dir(self):
         with tempfile.TemporaryDirectory() as root:
             plan_dir = os.path.join(root, ".miniclaw", "plans")
@@ -368,7 +546,7 @@ class TestCheckPlanMode(unittest.TestCase):
     def test_plan_mode_allows_readonly(self):
         with tempfile.TemporaryDirectory() as root:
             ctx = self._make_ctx(root)
-            for tool in ("read", "glob", "grep", "enter_plan_mode", "exit_plan_mode"):
+            for tool in ("read", "glob", "grep", "Skill", "enter_plan_mode", "exit_plan_mode"):
                 self.assertIsNone(check_plan_mode(tool, {}, ctx))
 
     def test_plan_mode_allows_plan_dir_write(self):
@@ -376,6 +554,14 @@ class TestCheckPlanMode(unittest.TestCase):
             ctx = self._make_ctx(root)
             self.assertIsNone(
                 check_plan_mode("write", {"path": ".miniclaw/plans/my-plan.md"}, ctx)
+            )
+
+    def test_plan_mode_allows_plan_dir_write_absolute(self):
+        with tempfile.TemporaryDirectory() as root:
+            ctx = self._make_ctx(root)
+            plan_file = os.path.join(root, ".miniclaw", "plans", "my-plan.md")
+            self.assertIsNone(
+                check_plan_mode("write", {"path": plan_file}, ctx)
             )
 
     def test_plan_mode_allows_any_file_in_plan_dir(self):
@@ -458,6 +644,23 @@ class TestExecuteToolPlanMode(unittest.TestCase):
             result = execute_tool("write", {"path": ".miniclaw/plans/my-plan.md", "content": "# Plan"}, root, context=ctx)
             self.assertIn("Successfully", result)
             with open(os.path.join(plan_dir, "my-plan.md")) as f:
+                self.assertEqual(f.read(), "# Plan")
+
+    def test_execute_tool_plan_mode_allows_plan_dir_write_absolute(self):
+        with tempfile.TemporaryDirectory() as root:
+            plan_dir = os.path.join(root, ".miniclaw", "plans")
+            os.makedirs(plan_dir)
+            plan_file = os.path.join(plan_dir, "my-plan.md")
+            ctx = {
+                "mode": "plan",
+                "plan_dir": plan_dir,
+                "workspace_root": root,
+            }
+            result = execute_tool(
+                "write", {"path": plan_file, "content": "# Plan"}, root, context=ctx,
+            )
+            self.assertIn("Successfully", result)
+            with open(plan_file) as f:
                 self.assertEqual(f.read(), "# Plan")
 
     def test_execute_tool_plan_mode_allows_multiple_plan_files(self):

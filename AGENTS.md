@@ -9,18 +9,19 @@
 **miniclaw** 是命令行 LLM 对话工具（通用 harness 框架），可通过 `pip install miniclaw` 安装后在任意目录使用 `miniclaw` 命令启动。底层模型可替换，当前默认接入 MiniMax API。核心能力包括：
 
 - **对话**：基于 OpenAI 兼容接口，支持多轮对话，默认模型 `MiniMax-M2.7`（可通过环境变量或 config.json 的 `llm` 配置切换模型和 API 地址）。
-- **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash` 六个工具，在 workspace 内读写文件和执行命令。
+- **Tool Call**：模型可调用 `read`、`write`、`edit`、`glob`、`grep`、`bash`、`Skill` 七个工具，在 workspace 内读写文件和执行命令。`read`/`write`/`edit`/`grep` 的 `path` 及 `glob` 的 `pattern` 均要求**绝对路径**（workspace 内文件以工作区目录为前缀；skill reference 以 Base directory 为前缀）。
 - **Plan Mode**：面对复杂任务时进入只读规划阶段，只读 bash 命令自动放行，写操作被拦截。可通过 `.miniclaw/config.json` 扩展允许的 bash 命令。
-- **.skills 技能目录**：启动时自动扫描 workspace 下 `.miniclaw/skills` 目录，从各子目录的 `SKILL.md` 解析 `name`、`description`，拼入 system prompt；模型按需通过 `read` 读取 `.miniclaw/skills/<name>/SKILL.md` 使用技能。
+- **Skills 技能目录**：启动时扫描 `~/.miniclaw/skills/`（全局）与 `{workspace}/.miniclaw/skills/`（项目，同名覆盖全局），从各子目录的 `SKILL.md` 解析元数据拼入 system prompt；模型通过 `Skill` tool 加载 skill 正文（注入 Base directory 前缀）。已注册 skill 目录对 `read`/`grep`/`glob` 只读放行（可超出 workspace）。
+- **System prompt 上下文**：启动时在 system prompt 注入「当前工作区目录」与「当前日期」（本地 ISO 格式 `YYYY-MM-DD`，会话内固定）。测试或调试可用环境变量 `MINICLAW_OVERRIDE_DATE` 覆盖日期。
 
 **主要入口与结构**：
 
 - `miniclaw` 命令（pip 安装后可用）或 `python3 chat.py`：入口，调用 `miniclaw.cli.main()`。
 - `miniclaw/` 包：`cli.py`（REPL）、`api.py`（LLM API 与 tool 循环）、`tools.py`（六个基础工具 + 分发）、`plan_mode.py`（plan mode 权限控制 + bash 白名单）、`config.py`（路径安全 + API 常量）、`dirs.py`（目录解析）、`settings.py`（配置加载与合并）、`skills.py`（技能扫描）、`dev_logging.py`（开发者日志）。
-- `.miniclaw/skills/`：技能目录，每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。
+- `.miniclaw/skills/`：项目级技能目录；`~/.miniclaw/skills/`：全局技能目录。每个技能一个子目录，内含 `SKILL.md`（YAML frontmatter + 正文）。
 - `tests/`：单元测试（`test_tools.py`、`test_api.py`、`test_cli.py`、`test_skills.py`、`test_dev_logging.py`）。
 - 文件分两级存放：用户级（`~/.miniclaw/`，含 logs 和全局 config）和 workspace 级（`{cwd}/.miniclaw/`，含 plans 和 workspace config）。
-- workspace 默认为当前目录，可通过 `-w` 参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > CWD）；所有文件与 bash 的 cwd 均为 workspace，路径禁止 `..` 逃逸。
+- workspace 默认为当前目录，可通过 `-w` 参数或 `MINICLAW_WORKSPACE` 环境变量自定义（CLI 参数 > 环境变量 > CWD）；所有文件与 bash 的 cwd 均为 workspace。`resolve_path` 支持 workspace 内的绝对路径与相对路径，禁止 `..` 逃逸；write/edit 成功时返回实际写入的绝对路径。
 
 **运行方式**：`LLM_API_KEY=your_key miniclaw`（可附加 `-w /path/to/dir`）。详见 [README.md](README.md)。
 

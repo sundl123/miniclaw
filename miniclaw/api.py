@@ -48,7 +48,7 @@ def _log_cache_metrics(usage) -> None:
     prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
     completion_tokens = getattr(usage, "completion_tokens", 0) or 0
     details = getattr(usage, "prompt_tokens_details", None)
-    cached = getattr(details, "cached_tokens", 0) if details else 0
+    cached = (getattr(details, "cached_tokens", 0) if details else 0) or 0
     ratio = (cached / prompt_tokens * 100) if prompt_tokens > 0 else 0.0
     get_dev_logger().info(
         "Cache metrics: prompt_tokens=%d, cached_tokens=%d, "

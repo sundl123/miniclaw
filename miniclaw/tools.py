@@ -6,7 +6,12 @@ import json
 import os
 import subprocess
 
-from miniclaw.config import resolve_path
+from miniclaw.config import (
+    is_allowed_read_path,
+    resolve_glob_pattern,
+    resolve_path,
+    resolve_read_path,
+)
 from miniclaw.context.tokens import estimate_text_tokens
 from miniclaw.plan_mode import (
     PLAN_MODE_HANDLERS,
@@ -15,6 +20,7 @@ from miniclaw.plan_mode import (
 )
 from miniclaw.read_file import FileTooLargeError, read_file_lines
 from miniclaw.settings import get_tools_config
+from miniclaw.skills import normalize_skill_name
 from miniclaw.tool_output import cap_tool_result, truncate_read_output
 from miniclaw.tools_config import ToolsConfig
 from miniclaw.ui import print_tool_call
@@ -24,10 +30,17 @@ from miniclaw.ui import print_tool_call
 # 工具实现
 # ---------------------------------------------------------------------------
 
+def _registered_skill_dirs(context: dict | None) -> frozenset[str]:
+    registry = (context or {}).get("skill_registry")
+    return registry.skill_dirs() if registry else frozenset()
+
+
 def handle_read(
     args: dict,
     workspace_root: str,
     tools_cfg: ToolsConfig | None = None,
+    *,
+    context: dict | None = None,
 ) -> str:
     """读取文件，返回带行号的内容。支持 offset / limit 做部分读取。"""
     path = args.get("path") or ""
@@ -35,7 +48,13 @@ def handle_read(
         return json.dumps({"error": "read 需要 path 参数"}, ensure_ascii=False)
 
     cfg = (tools_cfg or get_tools_config(workspace_root)).read
-    abs_path = resolve_path(path, workspace_root)
+    skill_dirs = _registered_skill_dirs(context)
+    try:
+        abs_path = resolve_read_path(
+            path, workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
     if not os.path.isfile(abs_path):
         return json.dumps({"error": f"文件不存在: {path}"}, ensure_ascii=False)
 
@@ -96,7 +115,7 @@ def handle_write(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None 
     os.makedirs(os.path.dirname(abs_path) or ".", exist_ok=True)
     with open(abs_path, "w", encoding="utf-8") as f:
         f.write(content)
-    return f"Successfully wrote to {path}"
+    return f"Successfully wrote to {abs_path}"
 
 
 def handle_edit(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None = None) -> str:
@@ -121,25 +140,44 @@ def handle_edit(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None =
     new_content = content.replace(old_string, new_string, 1)
     with open(abs_path, "w", encoding="utf-8") as f:
         f.write(new_content)
-    return f"Successfully edited {path}"
+    return f"Successfully edited {abs_path}"
 
 
 def handle_glob(
     args: dict,
     workspace_root: str,
     tools_cfg: ToolsConfig | None = None,
+    *,
+    context: dict | None = None,
 ) -> str:
-    """在工作区内按 glob 模式查找文件，按修改时间降序返回。"""
+    """在工作区或已注册 skill 目录内按 glob 模式查找文件，按修改时间降序返回。"""
     pattern = args.get("pattern") or ""
     if not pattern:
         return json.dumps({"error": "glob 需要 pattern 参数"}, ensure_ascii=False)
 
     cfg = tools_cfg or get_tools_config(workspace_root)
-    full_pattern = os.path.join(workspace_root, pattern)
+    skill_dirs = _registered_skill_dirs(context)
+    workspace_root = os.path.normpath(workspace_root)
+    try:
+        full_pattern, result_base = resolve_glob_pattern(
+            pattern, workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
+
     files = glob_module.glob(full_pattern, recursive=True)
-    files = [f for f in files if f.startswith(workspace_root)]
+    files = [
+        f for f in files
+        if is_allowed_read_path(
+            os.path.normpath(f), workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    ]
     files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
-    rel_files = [os.path.relpath(f, workspace_root) for f in files]
+
+    if result_base == workspace_root:
+        rel_files = [os.path.relpath(f, workspace_root) for f in files]
+    else:
+        rel_files = [os.path.normpath(f) for f in files]
 
     if not rel_files:
         return "No files found"
@@ -153,13 +191,25 @@ def handle_glob(
     return "\n".join(shown) + f"\n… and {more} more files (truncated)"
 
 
-def handle_grep(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None = None) -> str:
-    """在工作区内用 grep 搜索文件内容。"""
+def handle_grep(
+    args: dict,
+    workspace_root: str,
+    tools_cfg: ToolsConfig | None = None,
+    *,
+    context: dict | None = None,
+) -> str:
+    """在工作区或已注册 skill 目录内用 grep 搜索文件内容。"""
     pattern = args.get("pattern") or ""
     if not pattern:
         return json.dumps({"error": "grep 需要 pattern 参数"}, ensure_ascii=False)
-    search_path = args.get("path") or "."
-    abs_search = resolve_path(search_path, workspace_root)
+    search_path = args.get("path") or workspace_root
+    skill_dirs = _registered_skill_dirs(context)
+    try:
+        abs_search = resolve_read_path(
+            search_path, workspace_root, registered_skill_dirs=skill_dirs,
+        )
+    except PermissionError as e:
+        return json.dumps({"error": str(e)}, ensure_ascii=False)
     try:
         r = subprocess.run(
             ["grep", "-rn", "--", pattern, abs_search],
@@ -190,6 +240,29 @@ def handle_bash(args: dict, workspace_root: str, tools_cfg: ToolsConfig | None =
     return out or "(无输出)"
 
 
+def handle_skill(args: dict, workspace_root: str, context: dict | None = None) -> str:
+    """加载 skill：读取 SKILL.md 正文并注入 Base directory 前缀。"""
+    raw_name = args.get("skill") or ""
+    name = normalize_skill_name(raw_name)
+    if not name:
+        return json.dumps({"error": "Skill 需要 skill 参数"}, ensure_ascii=False)
+
+    registry = (context or {}).get("skill_registry")
+    if registry is None:
+        return json.dumps({"error": "skill 注册表未初始化"}, ensure_ascii=False)
+
+    entry = registry.lookup(name)
+    if entry is None:
+        return json.dumps({"error": f"未找到 skill: {name}"}, ensure_ascii=False)
+
+    try:
+        body = registry.load_skill_body(name)
+    except OSError as e:
+        return json.dumps({"error": f"读取 skill 失败: {e}"}, ensure_ascii=False)
+
+    return body
+
+
 # ---------------------------------------------------------------------------
 # 工具注册表与分发
 # ---------------------------------------------------------------------------
@@ -201,6 +274,7 @@ TOOL_HANDLERS = {
     "glob": handle_glob,
     "grep": handle_grep,
     "bash": handle_bash,
+    "Skill": handle_skill,
 }
 
 
@@ -219,6 +293,8 @@ def _print_tool_invocation(name: str, args: dict) -> None:
         detail = f"pattern={args.get('pattern', '')}"
     elif name == "grep":
         detail = f"pattern={args.get('pattern', '')} path={args.get('path', '.')}"
+    elif name == "Skill":
+        detail = f"skill={args.get('skill', '')}"
     elif name in PLAN_MODE_HANDLERS:
         pass
     print_tool_call(name, detail)
@@ -258,7 +334,12 @@ def execute_tool(
         return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
     _print_tool_invocation(name, args)
     try:
-        result = handler(args, root, tools_cfg=cfg)
+        if name in ("read", "grep", "glob"):
+            result = handler(args, root, tools_cfg=cfg, context=ctx)
+        elif name == "Skill":
+            result = handler(args, root, context=ctx)
+        else:
+            result = handler(args, root, tools_cfg=cfg)
     except PermissionError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
     except subprocess.TimeoutExpired:
@@ -284,7 +365,10 @@ def get_tool_schemas() -> list[dict]:
                 "If output is still too large with limit, results may be truncated."
             ),
             "parameters": {"type": "object", "properties": {
-                "path": {"type": "string", "description": "Relative path under workspace"},
+                "path": {
+                    "type": "string",
+                    "description": "The absolute path to the file to read (must be absolute, not relative)",
+                },
                 "offset": {
                     "type": "integer",
                     "description": "Start line, 0-based (default 0)",
@@ -299,7 +383,10 @@ def get_tool_schemas() -> list[dict]:
             "name": "write",
             "description": "Write content to a file (overwrites if exists, creates parent directories as needed).",
             "parameters": {"type": "object", "properties": {
-                "path": {"type": "string", "description": "Relative path under workspace"},
+                "path": {
+                    "type": "string",
+                    "description": "The absolute path to the file to write (must be absolute, not relative)",
+                },
                 "content": {"type": "string", "description": "File content to write"},
             }, "required": ["path", "content"]},
         }},
@@ -307,7 +394,10 @@ def get_tool_schemas() -> list[dict]:
             "name": "edit",
             "description": "Replace a unique string in a file. old_string must appear exactly once.",
             "parameters": {"type": "object", "properties": {
-                "path": {"type": "string", "description": "Relative path under workspace"},
+                "path": {
+                    "type": "string",
+                    "description": "The absolute path to the file to modify (must be absolute, not relative)",
+                },
                 "old_string": {"type": "string", "description": "The exact string to find (must appear once)"},
                 "new_string": {"type": "string", "description": "The replacement string"},
             }, "required": ["path", "old_string", "new_string"]},
@@ -315,19 +405,29 @@ def get_tool_schemas() -> list[dict]:
         {"type": "function", "function": {
             "name": "glob",
             "description": (
-                "Find files matching a glob pattern within the workspace. "
+                "Find files matching a glob pattern within the workspace or a registered "
+                "skill directory. Use absolute patterns (e.g. /path/to/ws/**/*.py). "
                 "Use ** for recursive matching. Results are capped (newest first)."
             ),
             "parameters": {"type": "object", "properties": {
-                "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.py', '*.md')"},
+                "pattern": {
+                    "type": "string",
+                    "description": "Absolute glob pattern (e.g. '/path/to/ws/**/*.py')",
+                },
             }, "required": ["pattern"]},
         }},
         {"type": "function", "function": {
             "name": "grep",
-            "description": "Search file contents for a pattern (regex) within the workspace.",
+            "description": (
+                "Search file contents for a pattern (regex) within the workspace or a "
+                "registered skill directory (absolute path)."
+            ),
             "parameters": {"type": "object", "properties": {
                 "pattern": {"type": "string", "description": "Search pattern (regex)"},
-                "path": {"type": "string", "description": "Relative path to search in (default: workspace root)"},
+                "path": {
+                    "type": "string",
+                    "description": "Absolute path to search in (default: workspace root as absolute path)",
+                },
             }, "required": ["pattern"]},
         }},
         {"type": "function", "function": {
@@ -336,5 +436,19 @@ def get_tool_schemas() -> list[dict]:
             "parameters": {"type": "object", "properties": {
                 "command": {"type": "string", "description": "The bash command to execute"},
             }, "required": ["command"]},
+        }},
+        {"type": "function", "function": {
+            "name": "Skill",
+            "description": (
+                "Load and activate a skill by name. Call this BEFORE executing "
+                "task-specific workflows when a skill matches the user's request. "
+                "Available skills are listed in the system prompt."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "skill": {
+                    "type": "string",
+                    "description": "Skill name (without leading slash, e.g. code-review)",
+                },
+            }, "required": ["skill"]},
         }},
     ] + get_plan_tool_schemas()

@@ -14,7 +14,7 @@ from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
 from miniclaw.settings import get_llm_config, get_context_config
 from miniclaw.context import format_context_status, manual_compact, init_ctx_mgmt
-from miniclaw.skills import build_system_prompt, scan_skills_metadata
+from miniclaw.skills import build_system_prompt, discover_skills
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
 from miniclaw.ui import print_banner, print_compact_progress, print_error, print_status
@@ -45,9 +45,8 @@ def _init_session(args: argparse.Namespace) -> dict:
     llm_cfg = get_llm_config(workspace)
     client = create_client(llm_cfg["api_key"], llm_cfg["base_url"])
 
-    skills_dir = os.path.join(workspace, ".miniclaw", "skills")
-    skill_meta = scan_skills_metadata(skills_dir)
-    system_prompt = build_system_prompt(skill_meta, workspace_root=workspace)
+    registry = discover_skills(workspace)
+    system_prompt = build_system_prompt(registry.list_metadata(), workspace_root=workspace)
 
     return {
         "client": client,
@@ -55,6 +54,7 @@ def _init_session(args: argparse.Namespace) -> dict:
         "timeout": llm_cfg["timeout"],
         "workspace": workspace,
         "system_prompt": system_prompt,
+        "skill_registry": registry,
         "tools": get_tool_schemas(),
         "context_config": get_context_config(workspace),
     }
@@ -67,12 +67,18 @@ def _repl_loop(session: dict) -> None:
     timeout = session["timeout"]
     workspace = session["workspace"]
     system_prompt = session["system_prompt"]
+    skill_registry = session["skill_registry"]
     tools = session["tools"]
     context_config = session["context_config"]
     messages = [{"role": "system", "content": system_prompt}]
 
     plan_dir = os.path.join(workspace, ".miniclaw", "plans")
-    context = {"mode": "agent", "plan_dir": plan_dir, "workspace_root": workspace}
+    context = {
+        "mode": "agent",
+        "plan_dir": plan_dir,
+        "workspace_root": workspace,
+        "skill_registry": skill_registry,
+    }
     init_ctx_mgmt(context)
 
     prompt_session = _create_prompt_session()
