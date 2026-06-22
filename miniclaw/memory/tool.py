@@ -9,16 +9,17 @@ from miniclaw.tools_config import ReadToolConfig, ToolsConfig
 MEMORY_TOOL_DESCRIPTION = (
     "Read and write persistent memory under ~/.miniclaw/memory/.\n\n"
     "ONLY MEMORY.md is auto-loaded every session (frozen in system prompt); "
-    "treat it as scarce (~25 KB / 200 lines). Put highest-signal facts there: "
-    "user preferences, corrections, durable environment facts.\n\n"
+    "treat it as scarce — byte/line limits apply only to MEMORY.md. Put highest-signal "
+    "facts there: user preferences, corrections, durable environment facts.\n\n"
     "Other files and subdirectories have NO size limit on disk — use them as an "
-    "unlimited scratch pad for detail. When reading large topic files you MUST use "
-    "offset/limit (files over 256 KB are rejected without limit).\n\n"
+    "unlimited scratch pad for detail. When reading large topic files use offset/limit; "
+    "without limit, oversized files are rejected (see error message).\n\n"
     "When MEMORY.md is full: shorten it, remove stale items, move detail to topic "
     "files, leave a short summary or relative link.\n\n"
     "Deleting MEMORY.md is NOT allowed; use edit to clear sections conservatively.\n\n"
-    "Every mutating action returns memory_md_usage with capacity percentage; "
-    "warnings appear above 80%.\n\n"
+    "Mutating actions and status return memory_md_usage (limits, usage, display). "
+    "Budget failures include limits and would_be. A warning field appears when nearing "
+    "capacity. Use action=status to compare disk vs frozen-injected snapshot.\n\n"
     "Do NOT save ephemeral task progress; save durable preferences and facts the user "
     "should not need to repeat."
 )
@@ -61,7 +62,7 @@ def get_memory_tool_schema() -> dict:
                         "type": "integer",
                         "description": (
                             "0-based line offset for read. Large files require limit; "
-                            "without limit, files over 256 KB are rejected."
+                            "without limit, oversized files are rejected."
                         ),
                     },
                     "limit": {
