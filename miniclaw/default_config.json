@@ -35,7 +35,7 @@
     }
   },
   "memory": {
-    "enabled": false,
+    "enabled": true,
     "memory_md_max_bytes": 25600,
     "memory_md_max_lines": 200,
     "warn_threshold_pct": 80
