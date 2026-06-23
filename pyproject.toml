@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "miniclaw"
-version = "0.1.2"
-description = "命令行 LLM 对话工具，支持 code-execution 与 skills 技能目录"
+version = "0.1.3"
+description = "命令行 LLM 对话工具，支持 tool-call、skills、memory 与 session search"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"

@@ -34,9 +34,12 @@ If you want to **learn**, **teach**, or **hack on** an AI agent, start here.
 
 ## Features
 
-- **6 Built-in Tools** -- `read`, `write`, `edit`, `glob`, `grep`, `bash`. The complete toolkit an agent needs to navigate and modify a codebase.
+- **9 Tools** -- `read`, `write`, `edit`, `glob`, `grep`, `bash`, `Skill`, `memory`, `session_search`. Workspace file ops plus on-demand skills, persistent memory, and past-session recall.
 - **Plan Mode** -- The agent can enter a read-only planning phase: explore code, produce a structured plan, then execute only after you approve. Write operations are blocked until you say go.
-- **Skills System** -- Drop a `SKILL.md` into `.miniclaw/skills/<name>/` and the agent learns new tricks. Skills are injected into the system prompt automatically.
+- **Skills System** -- Drop a `SKILL.md` into `.miniclaw/skills/<name>/` and the agent learns new tricks. Skills are injected into the system prompt automatically; the `Skill` tool loads full instructions on demand.
+- **Memory** -- Durable facts live in `~/.miniclaw/memory/MEMORY.md` and are auto-injected each session. The agent can read/write topic files for longer notes.
+- **Session Search** -- Conversations are recorded locally; the agent can browse, full-text search, or scroll through past sessions.
+- **Context Management** -- Micro-compaction and auto-summarize keep long conversations within the context window.
 - **Any OpenAI-compatible LLM** -- Swap models by changing one environment variable. Default: MiniMax-M2.7.
 - **Workspace Isolation** -- All file operations are sandboxed to your workspace directory. No `..` path escapes.
 
@@ -89,7 +92,7 @@ The entire agent fits in a handful of Python modules. Here's the core loop:
 flowchart LR
     User([You]) -->|message| REPL[cli.py<br>REPL]
     REPL -->|messages + tools| LLM[api.py<br>LLM API]
-    LLM -->|tool_call| Tools[tools.py<br>6 Tools]
+    LLM -->|tool_call| Tools[tools.py<br>9 Tools]
     Tools -->|result| LLM
     LLM -->|final reply| REPL
     REPL -->|display| User
@@ -101,7 +104,10 @@ Each module has a single responsibility -- read through them in this order:
 |--------|-------------|
 | [`cli.py`](miniclaw/cli.py) | Command-line REPL, parses input, handles `/plan`, `/clear`, etc. |
 | [`api.py`](miniclaw/api.py) | Sends messages to the LLM, runs the tool-call loop until the model stops calling tools |
-| [`tools.py`](miniclaw/tools.py) | Implements the 6 tools (`read`, `write`, `edit`, `glob`, `grep`, `bash`) and dispatches calls |
+| [`tools.py`](miniclaw/tools.py) | Implements workspace tools + dispatches `Skill`, `memory`, `session_search` |
+| [`context/`](miniclaw/context/) | Micro-compaction, auto-summarize, context window management |
+| [`memory/`](miniclaw/memory/) | Persistent memory store and `memory` tool |
+| [`sessions/`](miniclaw/sessions/) | Session DB, event records, and `session_search` tool |
 | [`plan_mode.py`](miniclaw/plan_mode.py) | Permission guard for plan mode: allows read-only ops, blocks writes |
 | [`skills.py`](miniclaw/skills.py) | Scans `.miniclaw/skills/` and injects skill metadata into the system prompt |
 | [`settings.py`](miniclaw/settings.py) | Loads and merges config from global + workspace JSON files |
@@ -138,6 +144,12 @@ Run `miniclaw init` to create the default config. Use `miniclaw init --force` to
   },
   "plan_mode": {
     "allowed_bash_patterns": ["^curl\\s+-s"]
+  },
+  "memory": {
+    "enabled": true
+  },
+  "sessions": {
+    "enabled": true
   }
 }
 ```
@@ -161,6 +173,8 @@ Create `.miniclaw/skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `
 ```
 ~/.miniclaw/                    # User-level (shared across workspaces)
 ├── logs/                       # Runtime logs
+├── memory/                     # Persistent memory (MEMORY.md + topic files)
+├── sessions/                   # Session DB (SQLite + FTS)
 └── config.json                 # Global config (optional)
 
 {workspace}/.miniclaw/          # Workspace-level (per project)
@@ -175,10 +189,14 @@ Create `.miniclaw/skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `
 miniclaw/
 ├── chat.py              # Dev entry point (same as `miniclaw` command)
 ├── pyproject.toml       # Package config
+├── CHANGELOG.md         # Release history
 ├── miniclaw/            # The Python package
 │   ├── cli.py           # REPL
 │   ├── api.py           # LLM API + tool loop
-│   ├── tools.py         # 6 tools + dispatch
+│   ├── tools.py         # Tool dispatch
+│   ├── context/         # Context compaction + summarization
+│   ├── memory/          # Persistent memory tool
+│   ├── sessions/        # Session records + search
 │   ├── plan_mode.py     # Plan mode permissions
 │   ├── config.py        # Path safety + constants
 │   ├── dirs.py          # Directory resolution
@@ -190,6 +208,10 @@ miniclaw/
 └── docs/design/         # Design docs
     └── miniclaw-architecture-analysis.md
 ```
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## Design Documents
 

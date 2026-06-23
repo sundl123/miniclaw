@@ -41,7 +41,7 @@
     "warn_threshold_pct": 80
   },
   "sessions": {
-    "enabled": false,
+    "enabled": true,
     "records_max_event_bytes": 100000,
     "search_default_limit": 3,
     "search_window": 5,
