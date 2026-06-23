@@ -8,7 +8,7 @@ from openai import OpenAI
 
 from miniclaw.context.config import ContextConfig, get_thresholds
 from miniclaw.context.micro_compact import micro_compact, count_compacted
-from miniclaw.context.summarize import extract_compact_summary, summarize_conversation
+from miniclaw.context.summarize import compact_boundary_content, summarize_conversation
 from miniclaw.context.tokens import (
     estimate_messages_tokens,
     get_estimated_tokens,
@@ -56,7 +56,7 @@ def _record_context_compact(
         return
     writer.append_meta(
         "context_compact",
-        summary=extract_compact_summary(new_messages),
+        content=compact_boundary_content(new_messages),
         messages_before=messages_before,
         messages_after=len(new_messages),
     )
