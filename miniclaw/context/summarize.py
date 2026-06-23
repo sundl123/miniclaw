@@ -199,6 +199,27 @@ def prepare_tail_for_rebuild(non_system: list[dict], keep: int) -> tuple[list[di
     return to_summarize, result
 
 
+_COMPACT_SUMMARY_MARKER = "Summary:\n"
+_COMPACT_TAIL_MARKER = "\n\nRecent messages"
+
+
+def extract_compact_summary(messages: list[dict], *, max_chars: int = 4000) -> str:
+    """Extract summary body from a compact boundary user message."""
+    for msg in messages:
+        if not msg.get("is_compact_summary"):
+            continue
+        content = msg.get("content") or ""
+        if _COMPACT_SUMMARY_MARKER not in content:
+            continue
+        body = content.split(_COMPACT_SUMMARY_MARKER, 1)[-1].split(
+            _COMPACT_TAIL_MARKER, 1
+        )[0].strip()
+        if not body:
+            continue
+        return body[:max_chars]
+    return ""
+
+
 def _rebuild_messages(
     system_msg: dict,
     summary_text: str,
@@ -207,7 +228,7 @@ def _rebuild_messages(
     boundary = (
         "This session is being continued from a previous conversation that ran out of context.\n"
         "The summary below covers the earlier portion of the conversation.\n\n"
-        f"Summary:\n{summary_text}\n\n"
+        f"{_COMPACT_SUMMARY_MARKER}{summary_text}\n\n"
         "Recent messages are preserved verbatim below."
     )
     return [
