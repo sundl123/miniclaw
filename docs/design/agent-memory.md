@@ -2,13 +2,13 @@
 
 > 本文记录 miniclaw **跨会话持久记忆**功能的设计结论，作为后续实现的参考。
 
-**状态**：Phase 1 已实现
+**状态**：Phase 1 + Phase 2a/2b 已实现
 **创建日期**：2026-06-05
-**最后更新**：2026-06-22
+**最后更新**：2026-06-23
 
 ---
 
-## Phase 1 实现（当前）
+## Phase 1 实现（memory）
 
 全局 auto memory，目录 `~/.miniclaw/memory/`。
 
@@ -35,7 +35,41 @@
 
 代码：`miniclaw/memory/`（`store.py`, `budget.py`, `tool.py`, …）
 
-Phase 1 **未做**：records、/reflect、AGENTS.md 加载、auto-skill。
+Phase 1 **未做**：/reflect、AGENTS.md 加载、auto-skill。
+
+---
+
+## Phase 2 实现（sessions + session_search）
+
+独立包 [`miniclaw/sessions/`](../miniclaw/sessions/)，与 `memory/` 分离。
+
+| 组件 | 行为 |
+|------|------|
+| **JSONL records** | `~/.miniclaw/records/{date}_{session_id}.jsonl`，append-only source of truth |
+| **SQLite + FTS5** | `~/.miniclaw/state.db`，查询面；仅索引 `user`/`assistant` content |
+| **双写** | 每条消息实时写入 JSONL + DB |
+| **ID** | `session_id`（进程级）+ `seq`（session 内单调递增）；DB 内部 `id` 仅 FTS rowid，不暴露给模型 |
+| **session_search tool** | `browse` / `discovery`（query）/ `scroll`（session_id + around_seq） |
+| **当前 session** | browse/discovery **默认排除**当前 session（避免重复）；scroll 拒绝当前 session |
+
+配置（`config.json`，与 `memory.enabled` 独立）：
+
+```json
+"sessions": {
+  "enabled": false,
+  "records_max_event_bytes": 100000,
+  "search_default_limit": 3,
+  "search_window": 5,
+  "browse_limit": 10
+}
+```
+
+与 memory 分工：
+
+- **memory** — 跨 session 精炼笔记（MEMORY.md）
+- **session_search** — 历史对话检索（「上次聊到哪了」）
+
+Phase 2 **未做**：`/reflect`、搜索当前 session（compact 后找回）、CJK trigram FTS、read 整 session dump。
 
 ---
 
@@ -382,11 +416,18 @@ miniclaw/
 - [x] topic 文件与子目录不限大小
 - [x] `/memory-status`
 
-**Phase 2（计划中）**
+**Phase 2a/2b（已完成）**
 
-- [ ] records JSONL
+- [x] `sessions.enabled` 开关（独立于 memory）
+- [x] JSONL + SQLite 双写 records
+- [x] `session_search` tool（browse / discovery / scroll）
+- [x] context_compact 元事件写入 records
+
+**Phase 2c+（计划中）**
+
 - [ ] `/reflect` heartbeat
 - [ ] auto-skill 生成
+- [ ] 搜索当前 session（compact 后内容找回）
 
 ---
 

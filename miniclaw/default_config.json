@@ -40,6 +40,13 @@
     "memory_md_max_lines": 200,
     "warn_threshold_pct": 80
   },
+  "sessions": {
+    "enabled": false,
+    "records_max_event_bytes": 100000,
+    "search_default_limit": 3,
+    "search_window": 5,
+    "browse_limit": 10
+  },
   "tools": {
     "read": {
       "max_file_bytes": 262144,

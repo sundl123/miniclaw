@@ -337,6 +337,10 @@ def run_turn_with_tools(
         tool_calls = message.get("tool_calls") or []
         messages.append(message)
 
+        writer = (context or {}).get("records_writer")
+        if writer is not None:
+            writer.append_assistant(message)
+
         if not tool_calls:
             return (message.get("content") or "").strip(), messages
 
@@ -348,3 +352,10 @@ def run_turn_with_tools(
             result = _execute_tool_call(tc, workspace_root=workspace_root,
                                         context=context)
             messages.append({"role": "tool", "tool_call_id": tid, "content": result})
+            if writer is not None:
+                fn = tc.get("function") or {}
+                writer.append_tool(
+                    tool_call_id=tid or "",
+                    name=fn.get("name", ""),
+                    content=result,
+                )

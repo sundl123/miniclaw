@@ -5,7 +5,9 @@ from unittest.mock import patch, MagicMock
 from miniclaw.context.config import ContextConfig, SummarizeConfig
 from miniclaw.context.summarize import (
     summarize_conversation,
+    compact_boundary_content,
     _parse_summary,
+    _rebuild_messages,
     _strip_non_summary_blocks,
     _is_valid_summary,
     prepare_tail_for_rebuild,
@@ -136,6 +138,33 @@ class TestParseSummary(unittest.TestCase):
             "6. Next step: N/A"
         )
         self.assertTrue(_is_valid_summary(real))
+
+
+class TestCompactBoundaryContent(unittest.TestCase):
+    def test_returns_full_boundary_from_rebuilt_messages(self):
+        msgs = _rebuild_messages(
+            {"role": "system", "content": "sys"},
+            "hello summary",
+            [],
+        )
+        content = compact_boundary_content(msgs)
+        self.assertIn("hello summary", content)
+        self.assertIn("Summary:", content)
+        self.assertIn("Recent messages are preserved verbatim below.", content)
+
+    def test_returns_empty_without_compact_message(self):
+        self.assertEqual(compact_boundary_content([
+            {"role": "user", "content": "plain"},
+        ]), "")
+
+    def test_truncates_to_max_chars(self):
+        long_summary = "x" * 5000
+        msgs = _rebuild_messages(
+            {"role": "system", "content": "sys"},
+            long_summary,
+            [],
+        )
+        self.assertEqual(len(compact_boundary_content(msgs, max_chars=100)), 100)
 
 
 class TestSummarize(unittest.TestCase):

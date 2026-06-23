@@ -199,6 +199,16 @@ def prepare_tail_for_rebuild(non_system: list[dict], keep: int) -> tuple[list[di
     return to_summarize, result
 
 
+def compact_boundary_content(messages: list[dict], *, max_chars: int = 4000) -> str:
+    """Return the full compact boundary user message injected after summarization."""
+    for msg in messages:
+        if msg.get("is_compact_summary"):
+            content = msg.get("content") or ""
+            if content:
+                return content[:max_chars]
+    return ""
+
+
 def _rebuild_messages(
     system_msg: dict,
     summary_text: str,

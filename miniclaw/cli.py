@@ -12,11 +12,12 @@ from prompt_toolkit.formatted_text import HTML
 from miniclaw.api import create_client, run_turn_with_tools
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
-from miniclaw.settings import get_llm_config, get_context_config, get_memory_config
+from miniclaw.settings import get_llm_config, get_context_config, get_memory_config, get_sessions_config
 from miniclaw.context import format_context_status, manual_compact, init_ctx_mgmt
 from miniclaw.skills import build_system_prompt, discover_skills
 from miniclaw.memory.store import MemoryStore
 from miniclaw.memory.status import format_memory_status
+from miniclaw.sessions.records import RecordsWriter
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
 from miniclaw.ui import print_banner, print_compact_progress, print_error, print_status
@@ -49,12 +50,21 @@ def _init_session(args: argparse.Namespace) -> dict:
 
     registry = discover_skills(workspace)
     memory_config = get_memory_config(workspace)
+    sessions_config = get_sessions_config(workspace)
     memory_store = None
     memory_block = None
     if memory_config.enabled:
         memory_store = MemoryStore(memory_config)
         memory_store.load_snapshot()
         memory_block = memory_store.format_for_system_prompt()
+
+    records_writer = None
+    if sessions_config.enabled:
+        records_writer = RecordsWriter.open(
+            sessions_config,
+            workspace=workspace,
+            model=llm_cfg["model"],
+        )
 
     system_prompt = build_system_prompt(
         registry.list_metadata(),
@@ -69,10 +79,15 @@ def _init_session(args: argparse.Namespace) -> dict:
         "workspace": workspace,
         "system_prompt": system_prompt,
         "skill_registry": registry,
-        "tools": get_tool_schemas(include_memory=memory_config.enabled),
+        "tools": get_tool_schemas(
+            include_memory=memory_config.enabled,
+            include_session_search=sessions_config.enabled,
+        ),
         "context_config": get_context_config(workspace),
         "memory_config": memory_config,
         "memory_store": memory_store,
+        "sessions_config": sessions_config,
+        "records_writer": records_writer,
     }
 
 
@@ -87,6 +102,7 @@ def _repl_loop(session: dict) -> None:
     tools = session["tools"]
     context_config = session["context_config"]
     memory_store = session.get("memory_store")
+    records_writer = session.get("records_writer")
     messages = [{"role": "system", "content": system_prompt}]
 
     plan_dir = os.path.join(workspace, ".miniclaw", "plans")
@@ -98,6 +114,11 @@ def _repl_loop(session: dict) -> None:
     }
     if memory_store is not None:
         context["memory_store"] = memory_store
+    if records_writer is not None:
+        context["records_writer"] = records_writer
+        context["session_id"] = records_writer.session_id
+        context["session_db"] = records_writer.db
+        context["sessions_config"] = session.get("sessions_config")
     init_ctx_mgmt(context)
 
     prompt_session = _create_prompt_session()
@@ -125,6 +146,8 @@ def _repl_loop(session: dict) -> None:
             context["mode"] = "agent"
             context.pop("_ctx_mgmt", None)
             init_ctx_mgmt(context)
+            if records_writer is not None:
+                records_writer.append_meta("session_clear")
             print_status("已清空对话历史")
             continue
         if user_input == "/model":
@@ -163,6 +186,8 @@ def _repl_loop(session: dict) -> None:
             content = (f"{instructions}\n\n用户需求：{description}"
                        if description else instructions)
             messages.append({"role": "user", "content": content})
+            if records_writer is not None:
+                records_writer.append_user(content)
             try:
                 reply, messages = run_turn_with_tools(
                     client, model, messages, tools,
@@ -180,6 +205,8 @@ def _repl_loop(session: dict) -> None:
             continue
 
         messages.append({"role": "user", "content": user_input})
+        if records_writer is not None:
+            records_writer.append_user(user_input)
 
         try:
             reply, messages = run_turn_with_tools(

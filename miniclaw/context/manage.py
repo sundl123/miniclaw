@@ -8,7 +8,7 @@ from openai import OpenAI
 
 from miniclaw.context.config import ContextConfig, get_thresholds
 from miniclaw.context.micro_compact import micro_compact, count_compacted
-from miniclaw.context.summarize import summarize_conversation
+from miniclaw.context.summarize import compact_boundary_content, summarize_conversation
 from miniclaw.context.tokens import (
     estimate_messages_tokens,
     get_estimated_tokens,
@@ -45,6 +45,41 @@ def _notify_progress(
         on_progress(phase)
 
 
+def _record_context_compact(
+    context: Optional[dict],
+    *,
+    messages_before: int,
+    new_messages: list[dict],
+) -> None:
+    writer = (context or {}).get("records_writer")
+    if writer is None:
+        return
+    writer.append_meta(
+        "context_compact",
+        content=compact_boundary_content(new_messages),
+        messages_before=messages_before,
+        messages_after=len(new_messages),
+    )
+
+
+def _finalize_summarize_success(
+    ctx: dict,
+    on_progress: CompactProgressCallback | None,
+    context: Optional[dict],
+    *,
+    messages_before: int,
+    new_messages: list[dict],
+) -> None:
+    ctx["consecutive_summarize_failures"] = 0
+    ctx["last_prompt_tokens"] = None
+    _notify_progress(on_progress, "done")
+    _record_context_compact(
+        context,
+        messages_before=messages_before,
+        new_messages=new_messages,
+    )
+
+
 def _try_auto_summarize(
     client: OpenAI,
     model: str,
@@ -72,14 +107,17 @@ def _try_auto_summarize(
 
     ctx["compacting"] = True
     _notify_progress(on_progress, "start")
+    messages_before = len(messages)
     try:
         new_messages, ok = summarize_conversation(
             client, model, messages, cfg, timeout=timeout,
         )
         if ok:
-            ctx["consecutive_summarize_failures"] = 0
-            ctx["last_prompt_tokens"] = None
-            _notify_progress(on_progress, "done")
+            _finalize_summarize_success(
+                ctx, on_progress, context,
+                messages_before=messages_before,
+                new_messages=new_messages,
+            )
             return new_messages
         ctx["consecutive_summarize_failures"] = ctx.get("consecutive_summarize_failures", 0) + 1
         if ctx["consecutive_summarize_failures"] >= cfg.auto_summarize.max_consecutive_failures:
@@ -149,9 +187,11 @@ def manual_compact(
             timeout=timeout,
         )
         if ok:
-            ctx["consecutive_summarize_failures"] = 0
-            ctx["last_prompt_tokens"] = None
-            _notify_progress(on_compact_progress, "done")
+            _finalize_summarize_success(
+                ctx, on_compact_progress, context,
+                messages_before=len(messages),
+                new_messages=new_messages,
+            )
         else:
             _notify_progress(on_compact_progress, "failed")
         return new_messages, ok
