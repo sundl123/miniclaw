@@ -142,7 +142,6 @@ def build_system_prompt(
     *,
     workspace_root: str = None,
     memory_block: str | None = None,
-    sessions_enabled: bool = False,
 ) -> str:
     """根据技能元数据列表拼接 system prompt。"""
     env_lines = ""
@@ -174,11 +173,4 @@ def build_system_prompt(
         lines.append("（暂无可用 skill）")
     if memory_block:
         lines.extend(["", "## Auto Memory", memory_block])
-    if sessions_enabled:
-        lines.extend([
-            "",
-            "## Session History",
-            "Use session_search to recall past conversations (topics, decisions, progress). "
-            "Use memory for durable facts and preferences — not full conversation dumps.",
-        ])
     return "\n".join(lines)

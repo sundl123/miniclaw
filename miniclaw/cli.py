@@ -70,7 +70,6 @@ def _init_session(args: argparse.Namespace) -> dict:
         registry.list_metadata(),
         workspace_root=workspace,
         memory_block=memory_block,
-        sessions_enabled=sessions_config.enabled,
     )
 
     return {
