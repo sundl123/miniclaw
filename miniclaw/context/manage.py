@@ -72,6 +72,7 @@ def _try_auto_summarize(
 
     ctx["compacting"] = True
     _notify_progress(on_progress, "start")
+    messages_before = len(messages)
     try:
         new_messages, ok = summarize_conversation(
             client, model, messages, cfg, timeout=timeout,
@@ -80,6 +81,23 @@ def _try_auto_summarize(
             ctx["consecutive_summarize_failures"] = 0
             ctx["last_prompt_tokens"] = None
             _notify_progress(on_progress, "done")
+            writer = (context or {}).get("records_writer")
+            if writer is not None:
+                summary_text = ""
+                for msg in new_messages:
+                    if msg.get("is_compact_summary"):
+                        content = msg.get("content") or ""
+                        if "Summary:\n" in content:
+                            summary_text = content.split("Summary:\n", 1)[-1].split(
+                                "\n\nRecent messages", 1
+                            )[0].strip()
+                        break
+                writer.append_meta(
+                    "context_compact",
+                    summary=summary_text[:4000] if summary_text else "",
+                    messages_before=messages_before,
+                    messages_after=len(new_messages),
+                )
             return new_messages
         ctx["consecutive_summarize_failures"] = ctx.get("consecutive_summarize_failures", 0) + 1
         if ctx["consecutive_summarize_failures"] >= cfg.auto_summarize.max_consecutive_failures:
@@ -152,6 +170,23 @@ def manual_compact(
             ctx["consecutive_summarize_failures"] = 0
             ctx["last_prompt_tokens"] = None
             _notify_progress(on_compact_progress, "done")
+            writer = (context or {}).get("records_writer")
+            if writer is not None:
+                summary_text = ""
+                for msg in new_messages:
+                    if msg.get("is_compact_summary"):
+                        content = msg.get("content") or ""
+                        if "Summary:\n" in content:
+                            summary_text = content.split("Summary:\n", 1)[-1].split(
+                                "\n\nRecent messages", 1
+                            )[0].strip()
+                        break
+                writer.append_meta(
+                    "context_compact",
+                    summary=summary_text[:4000] if summary_text else "",
+                    messages_before=len(messages),
+                    messages_after=len(new_messages),
+                )
         else:
             _notify_progress(on_compact_progress, "failed")
         return new_messages, ok

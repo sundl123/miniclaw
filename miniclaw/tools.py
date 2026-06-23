@@ -23,6 +23,7 @@ from miniclaw.skills import normalize_skill_name
 from miniclaw.tool_output import cap_tool_result, enforce_read_output_limits
 from miniclaw.tools_config import ToolsConfig
 from miniclaw.memory.tool import get_memory_tool_schema, handle_memory
+from miniclaw.sessions.search import get_session_search_schema, handle_session_search
 from miniclaw.ui import print_tool_call
 
 
@@ -267,6 +268,7 @@ TOOL_HANDLERS = {
     "bash": handle_bash,
     "Skill": handle_skill,
     "memory": handle_memory,
+    "session_search": handle_session_search,
 }
 
 
@@ -289,6 +291,13 @@ def _print_tool_invocation(name: str, args: dict) -> None:
         detail = f"skill={args.get('skill', '')}"
     elif name == "memory":
         detail = f"action={args.get('action', '')} path={args.get('path', '')}"
+    elif name == "session_search":
+        if args.get("query"):
+            detail = f"query={args.get('query', '')[:60]}"
+        elif args.get("session_id"):
+            detail = f"session_id={args.get('session_id')} around_seq={args.get('around_seq', '')}"
+        else:
+            detail = "browse"
     elif name in PLAN_MODE_HANDLERS:
         pass
     print_tool_call(name, detail)
@@ -334,6 +343,13 @@ def execute_tool(
             result = handler(args, root, context=ctx)
         elif name == "memory":
             result = handler(args, context=ctx, tools_cfg=cfg)
+        elif name == "session_search":
+            result = handler(
+                args,
+                db=ctx.get("session_db"),
+                current_session_id=ctx.get("session_id"),
+                config=ctx.get("sessions_config"),
+            )
         else:
             result = handler(args, root, tools_cfg=cfg)
     except PermissionError as e:
@@ -350,7 +366,7 @@ def execute_tool(
 # Tool Schema
 # ---------------------------------------------------------------------------
 
-def get_tool_schemas(*, include_memory: bool = False) -> list[dict]:
+def get_tool_schemas(*, include_memory: bool = False, include_session_search: bool = False) -> list[dict]:
     """返回所有工具的 OpenAI function-calling 风格定义（含 plan mode 工具）。"""
     schemas = [
         {"type": "function", "function": {
@@ -450,4 +466,6 @@ def get_tool_schemas(*, include_memory: bool = False) -> list[dict]:
     ]
     if include_memory:
         schemas.append(get_memory_tool_schema())
+    if include_session_search:
+        schemas.append(get_session_search_schema())
     return schemas + get_plan_tool_schemas()

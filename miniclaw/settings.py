@@ -21,6 +21,13 @@ from miniclaw.memory.config import (
     DEFAULT_WARN_THRESHOLD_PCT,
     MemoryConfig,
 )
+from miniclaw.sessions.config import (
+    DEFAULT_BROWSE_LIMIT,
+    DEFAULT_RECORDS_MAX_EVENT_BYTES,
+    DEFAULT_SEARCH_DEFAULT_LIMIT,
+    DEFAULT_SEARCH_WINDOW,
+    SessionsConfig,
+)
 
 _CONFIG_FILENAME = "config.json"
 _CONFIG_SUBDIR = ".miniclaw"
@@ -203,6 +210,32 @@ def get_memory_config(workspace_root: str) -> MemoryConfig:
         memory_md_max_bytes=int(raw.get("memory_md_max_bytes", DEFAULT_MEMORY_MD_MAX_BYTES)),
         memory_md_max_lines=int(raw.get("memory_md_max_lines", DEFAULT_MEMORY_MD_MAX_LINES)),
         warn_threshold_pct=int(raw.get("warn_threshold_pct", DEFAULT_WARN_THRESHOLD_PCT)),
+    )
+
+
+def get_sessions_config(workspace_root: str) -> SessionsConfig:
+    """Load session records / session_search config."""
+    raw = load_merged_config(workspace_root).get("sessions", {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    if os.environ.get("MINICLAW_SESSIONS_ENABLED", "").strip() in ("1", "true", "yes"):
+        enabled = True
+    elif os.environ.get("MINICLAW_SESSIONS_ENABLED", "").strip() in ("0", "false", "no"):
+        enabled = False
+    else:
+        enabled = bool(raw.get("enabled", False))
+
+    return SessionsConfig(
+        enabled=enabled,
+        records_max_event_bytes=int(
+            raw.get("records_max_event_bytes", DEFAULT_RECORDS_MAX_EVENT_BYTES)
+        ),
+        search_default_limit=int(
+            raw.get("search_default_limit", DEFAULT_SEARCH_DEFAULT_LIMIT)
+        ),
+        search_window=int(raw.get("search_window", DEFAULT_SEARCH_WINDOW)),
+        browse_limit=int(raw.get("browse_limit", DEFAULT_BROWSE_LIMIT)),
     )
 
 
