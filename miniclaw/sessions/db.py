@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS schema_version (
 CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     started_at TEXT NOT NULL,
-    ended_at TEXT,
+    updated_at TEXT NOT NULL,
     workspace TEXT,
     model TEXT,
     jsonl_path TEXT NOT NULL
@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_seq ON messages(session_id, seq);
 CREATE INDEX IF NOT EXISTS idx_messages_session_ts ON messages(session_id, ts);
+CREATE INDEX IF NOT EXISTS idx_sessions_updated_at ON sessions(updated_at DESC);
 """
 
 _FTS_SQL = """
@@ -140,18 +141,11 @@ class SessionDB:
         with self._lock:
             self._conn.execute(
                 """
-                INSERT INTO sessions (id, started_at, workspace, model, jsonl_path)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO sessions (
+                    id, started_at, updated_at, workspace, model, jsonl_path
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, started_at, workspace, model, jsonl_path),
-            )
-            self._conn.commit()
-
-    def mark_session_ended(self, session_id: str, ended_at: str) -> None:
-        with self._lock:
-            self._conn.execute(
-                "UPDATE sessions SET ended_at = ? WHERE id = ?",
-                (ended_at, session_id),
+                (session_id, started_at, started_at, workspace, model, jsonl_path),
             )
             self._conn.commit()
 
@@ -183,6 +177,10 @@ class SessionDB:
                     session_id, seq, ts, role, content,
                     tool_name, tool_call_id, tool_calls_json, type,
                 ),
+            )
+            self._conn.execute(
+                "UPDATE sessions SET updated_at = ? WHERE id = ?",
+                (ts, session_id),
             )
             self._conn.commit()
             return int(cur.lastrowid)
@@ -239,7 +237,7 @@ class SessionDB:
                     (SELECT COUNT(*) FROM messages m
                      WHERE m.session_id = s.id AND m.type IS NULL) AS message_count
                 FROM sessions s
-                ORDER BY s.started_at DESC
+                ORDER BY s.updated_at DESC
                 LIMIT ?
                 """,
                 (limit + 5,),
@@ -253,7 +251,7 @@ class SessionDB:
             results.append({
                 "session_id": sid,
                 "started_at": row["started_at"],
-                "ended_at": row["ended_at"],
+                "updated_at": row["updated_at"],
                 "workspace": row["workspace"],
                 "model": row["model"],
                 "message_count": row["message_count"],

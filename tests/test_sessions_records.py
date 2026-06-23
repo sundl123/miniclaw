@@ -70,21 +70,44 @@ class TestSessionsRecords(unittest.TestCase):
         self.assertEqual(user_line["original_bytes"], 500)
         self.assertLessEqual(len(user_line["content"].encode("utf-8")), 100)
 
-    def test_session_meta_events(self):
+    def test_updated_at_on_create(self):
+        db = SessionDB(self.db_path)
+        started_at = "2026-01-01T00:00:00+00:00"
+        db.insert_session(
+            "sess001",
+            started_at=started_at,
+            workspace="/proj",
+            model="test-model",
+            jsonl_path="/proj/records/test.jsonl",
+        )
+        session = db.get_session("sess001")
+        self.assertIsNotNone(session)
+        assert session is not None
+        self.assertEqual(session["updated_at"], started_at)
+
+    def test_updated_at_bumps_on_append(self):
         writer = RecordsWriter.open(
             self.cfg, workspace="/proj", model="test-model",
         )
-        writer.append_meta("session_clear")
-        writer.mark_session_end()
-
         db = SessionDB(self.db_path)
+        session_after_start = db.get_session(writer.session_id)
+        assert session_after_start is not None
+
+        writer.append_meta("session_clear")
+        writer.append_user("hello")
+
         session = db.get_session(writer.session_id)
-        self.assertIsNotNone(session.get("ended_at"))
+        assert session is not None
+        self.assertIsNotNone(session.get("updated_at"))
+        self.assertNotEqual(
+            session["updated_at"],
+            session_after_start["updated_at"],
+        )
 
         with open(writer._jsonl_path, "r", encoding="utf-8") as f:
             types = [json.loads(line).get("type") for line in f if line.strip()]
         self.assertIn("session_clear", types)
-        self.assertIn("session_end", types)
+        self.assertNotIn("session_end", types)
 
 
 if __name__ == "__main__":

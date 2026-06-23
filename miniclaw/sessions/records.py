@@ -186,8 +186,3 @@ class RecordsWriter:
             **extra,
         }
         return self._write_event(event)
-
-    def mark_session_end(self) -> None:
-        ended_at = _utc_now_iso()
-        self.append_meta("session_end")
-        self._db.mark_session_ended(self.session_id, ended_at)

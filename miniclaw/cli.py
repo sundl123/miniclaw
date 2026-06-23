@@ -134,16 +134,12 @@ def _repl_loop(session: dict) -> None:
                 prompt_text = HTML("<style fg='ansigreen'>❯</style> ")
             user_input = prompt_session.prompt(prompt_text).strip()
         except (EOFError, KeyboardInterrupt):
-            if records_writer is not None:
-                records_writer.mark_session_end()
             print("\n再见。")
             break
 
         if not user_input:
             continue
         if user_input in ("/quit", "/exit", "/q"):
-            if records_writer is not None:
-                records_writer.mark_session_end()
             print("再见。")
             break
         if user_input == "/clear":

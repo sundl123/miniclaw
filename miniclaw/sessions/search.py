@@ -174,6 +174,7 @@ def _discover(
             "ts": row.get("ts"),
             "session_meta": {
                 "started_at": session_meta.get("started_at"),
+                "updated_at": session_meta.get("updated_at"),
                 "workspace": session_meta.get("workspace"),
                 "model": session_meta.get("model"),
             },
@@ -255,6 +256,7 @@ def _scroll(
         "window": window,
         "session_meta": {
             "started_at": session_meta.get("started_at"),
+            "updated_at": session_meta.get("updated_at"),
             "workspace": session_meta.get("workspace"),
             "model": session_meta.get("model"),
         },
