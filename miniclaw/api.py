@@ -305,14 +305,19 @@ def run_turn_with_tools(
     context: dict = None,
     context_config: Optional[ContextConfig] = None,
     on_compact_progress: Optional[Callable[[str], None]] = None,
+    max_turns: Optional[int] = None,
 ) -> tuple[str, list[dict]]:
     """带 tool 的对话循环：流式请求 → 若有 tool_calls 则执行并追加消息 → 再请求，直到无 tool_calls。
 
     context 承载 plan mode 状态，由 REPL 层创建并透传给 execute_tool。
     context_config 控制 micro-compaction 与 summarization。
+    max_turns 限制「含 tool_calls 的模型响应」轮数；超出后停止并把
+    context['_subagent_truncated']=True（供 sub-agent runner 使用）。
     """
     init_ctx_mgmt(context)
     cfg = context_config
+    tool_rounds = 0
+    last_content = ""
 
     while True:
         if cfg is not None:
@@ -336,15 +341,32 @@ def run_turn_with_tools(
 
         tool_calls = message.get("tool_calls") or []
         messages.append(message)
+        last_content = (message.get("content") or "").strip()
 
         writer = (context or {}).get("records_writer")
         if writer is not None:
             writer.append_assistant(message)
 
         if not tool_calls:
-            return (message.get("content") or "").strip(), messages
+            if context is not None:
+                context.pop("_subagent_truncated", None)
+            return last_content, messages
 
-        if (message.get("content") or "").strip():
+        tool_rounds += 1
+        if max_turns is not None and tool_rounds > max_turns:
+            # Drop the incomplete assistant tool_calls turn; report truncated.
+            messages.pop()
+            if context is not None:
+                context["_subagent_truncated"] = True
+            # Prefer last assistant text already in history.
+            for m in reversed(messages):
+                if m.get("role") == "assistant":
+                    text = (m.get("content") or "").strip()
+                    if text:
+                        return text, messages
+            return last_content, messages
+
+        if last_content:
             print()
 
         for tc in tool_calls:

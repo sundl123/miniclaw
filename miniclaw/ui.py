@@ -70,9 +70,35 @@ def print_banner(model: str, workspace: str) -> None:
     console.print(panel)
 
 
-def print_tool_call(name: str, detail: str) -> None:
-    """打印工具调用摘要。"""
-    console.print(f"  [bold cyan]◆ {name}[/bold cyan] [dim]{detail}[/dim]")
+def print_tool_call(name: str, detail: str, *, indent: int = 0) -> None:
+    """打印工具调用摘要。indent>0 时用于嵌套 sub-agent 输出。"""
+    pad = "  " * (1 + max(indent, 0))
+    console.print(f"{pad}[bold cyan]◆ {name}[/bold cyan] [dim]{detail}[/dim]")
+
+
+def print_agent_start(agent_type: str, description: str, *, depth: int = 1) -> None:
+    """打印 sub-agent 开始行。"""
+    pad = "  " * max(depth, 1)
+    console.print(
+        f"{pad}[bold magenta]↳ Agent[{agent_type}][/bold magenta] [dim]{description}[/dim]"
+    )
+
+
+def print_agent_done(
+    agent_type: str,
+    *,
+    status: str,
+    duration_ms: int,
+    tool_use_count: int,
+    depth: int = 1,
+) -> None:
+    """打印 sub-agent 结束行。"""
+    pad = "  " * max(depth, 1)
+    secs = duration_ms / 1000.0
+    console.print(
+        f"{pad}[bold magenta]← Agent[{agent_type}] {status}[/bold magenta] "
+        f"[dim]({secs:.1f}s, {tool_use_count} tools)[/dim]"
+    )
 
 
 def print_error(label: str, message: str) -> None:

@@ -16,14 +16,17 @@ from miniclaw.plan_mode import (
     PLAN_MODE_HANDLERS,
     check_plan_mode,
     get_plan_tool_schemas,
+    is_readonly_bash,
 )
 from miniclaw.read_file import FileTooLargeError, read_file_lines
-from miniclaw.settings import get_tools_config
+from miniclaw.settings import get_plan_allowed_patterns, get_tools_config
 from miniclaw.skills import normalize_skill_name
 from miniclaw.tool_output import cap_tool_result, enforce_read_output_limits
 from miniclaw.tools_config import ToolsConfig
 from miniclaw.memory.tool import get_memory_tool_schema, handle_memory
 from miniclaw.sessions.search import get_session_search_schema, handle_session_search
+from miniclaw.subagent.tool import get_agent_tool_schema, handle_agent
+from miniclaw.subagent.types import AGENT_TOOL_NAME
 from miniclaw.ui import print_tool_call
 
 
@@ -284,10 +287,11 @@ TOOL_HANDLERS = {
     "Skill": handle_skill,
     "memory": handle_memory,
     "session_search": handle_session_search,
+    AGENT_TOOL_NAME: handle_agent,
 }
 
 
-def _print_tool_invocation(name: str, args: dict) -> None:
+def _print_tool_invocation(name: str, args: dict, *, context: dict | None = None) -> None:
     """向 stdout 打印工具调用摘要，便于 REPL 用户看到进度。"""
     detail = ""
     if name in ("read", "write", "edit"):
@@ -313,9 +317,36 @@ def _print_tool_invocation(name: str, args: dict) -> None:
             detail = f"session_id={args.get('session_id')} around_seq={args.get('around_seq', '')}"
         else:
             detail = "browse"
+    elif name == AGENT_TOOL_NAME:
+        detail = (
+            f"type={args.get('subagent_type') or 'general'} "
+            f"desc={args.get('description', '')}"
+        )
     elif name in PLAN_MODE_HANDLERS:
         pass
-    print_tool_call(name, detail)
+    indent = int((context or {}).get("agent_depth") or 0)
+    print_tool_call(name, detail, indent=indent)
+
+
+def _check_readonly_bash(name: str, args: dict, context: dict) -> str | None:
+    """Explore sub-agent: reject non-readonly bash even outside plan mode."""
+    if name != "bash" or not context.get("readonly_bash_only"):
+        return None
+    command = args.get("command", "")
+    root = context.get("workspace_root") or os.getcwd()
+    extra = context.get("_plan_allowed_patterns")
+    if extra is None:
+        extra = get_plan_allowed_patterns(root)
+        context["_plan_allowed_patterns"] = extra
+    if is_readonly_bash(command, extra):
+        return None
+    return json.dumps({
+        "error": (
+            "Explore sub-agent only allows read-only bash commands "
+            "(e.g. ls, cat, git log, find, wc). "
+            "The current command may have side effects and was rejected."
+        ),
+    }, ensure_ascii=False)
 
 
 def execute_tool(
@@ -335,12 +366,17 @@ def execute_tool(
 
     blocked = check_plan_mode(name, args, ctx)
     if blocked:
-        _print_tool_invocation(name, args)
+        _print_tool_invocation(name, args, context=ctx)
         return blocked
+
+    readonly_blocked = _check_readonly_bash(name, args, ctx)
+    if readonly_blocked:
+        _print_tool_invocation(name, args, context=ctx)
+        return readonly_blocked
 
     plan_handler = PLAN_MODE_HANDLERS.get(name)
     if plan_handler:
-        _print_tool_invocation(name, args)
+        _print_tool_invocation(name, args, context=ctx)
         try:
             result = plan_handler(args, root, ctx)
         except Exception as e:
@@ -350,11 +386,13 @@ def execute_tool(
     handler = TOOL_HANDLERS.get(name)
     if not handler:
         return json.dumps({"error": f"未知工具: {name}"}, ensure_ascii=False)
-    _print_tool_invocation(name, args)
+    _print_tool_invocation(name, args, context=ctx)
     try:
         if name in ("read", "grep", "glob"):
             result = handler(args, root, tools_cfg=cfg, context=ctx)
         elif name == "Skill":
+            result = handler(args, root, context=ctx)
+        elif name == AGENT_TOOL_NAME:
             result = handler(args, root, context=ctx)
         elif name == "memory":
             result = handler(args, context=ctx, tools_cfg=cfg)
@@ -381,7 +419,12 @@ def execute_tool(
 # Tool Schema
 # ---------------------------------------------------------------------------
 
-def get_tool_schemas(*, include_memory: bool = False, include_session_search: bool = False) -> list[dict]:
+def get_tool_schemas(
+    *,
+    include_memory: bool = False,
+    include_session_search: bool = False,
+    include_agent: bool = False,
+) -> list[dict]:
     """返回所有工具的 OpenAI function-calling 风格定义（含 plan mode 工具）。"""
     schemas = [
         {"type": "function", "function": {
@@ -483,4 +526,6 @@ def get_tool_schemas(*, include_memory: bool = False, include_session_search: bo
         schemas.append(get_memory_tool_schema())
     if include_session_search:
         schemas.append(get_session_search_schema())
+    if include_agent:
+        schemas.append(get_agent_tool_schema())
     return schemas + get_plan_tool_schemas()

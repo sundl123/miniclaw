@@ -12,7 +12,13 @@ from prompt_toolkit.formatted_text import HTML
 from miniclaw.api import create_client, run_turn_with_tools
 from miniclaw.dev_logging import setup_dev_logging
 from miniclaw.dirs import ensure_user_config, get_log_dir, get_user_data_dir, resolve_workspace
-from miniclaw.settings import get_llm_config, get_context_config, get_memory_config, get_sessions_config
+from miniclaw.settings import (
+    get_llm_config,
+    get_context_config,
+    get_memory_config,
+    get_sessions_config,
+    get_subagent_config,
+)
 from miniclaw.context import format_context_status, manual_compact, init_ctx_mgmt
 from miniclaw.skills import build_system_prompt, discover_skills
 from miniclaw.memory.store import MemoryStore
@@ -51,6 +57,7 @@ def _init_session(args: argparse.Namespace) -> dict:
     registry = discover_skills(workspace)
     memory_config = get_memory_config(workspace)
     sessions_config = get_sessions_config(workspace)
+    subagent_config = get_subagent_config(workspace)
     memory_store = None
     memory_block = None
     if memory_config.enabled:
@@ -82,11 +89,13 @@ def _init_session(args: argparse.Namespace) -> dict:
         "tools": get_tool_schemas(
             include_memory=memory_config.enabled,
             include_session_search=sessions_config.enabled,
+            include_agent=subagent_config.enabled,
         ),
         "context_config": get_context_config(workspace),
         "memory_config": memory_config,
         "memory_store": memory_store,
         "sessions_config": sessions_config,
+        "subagent_config": subagent_config,
         "records_writer": records_writer,
     }
 
@@ -103,6 +112,7 @@ def _repl_loop(session: dict) -> None:
     context_config = session["context_config"]
     memory_store = session.get("memory_store")
     records_writer = session.get("records_writer")
+    subagent_config = session.get("subagent_config")
     messages = [{"role": "system", "content": system_prompt}]
 
     plan_dir = os.path.join(workspace, ".miniclaw", "plans")
@@ -111,6 +121,16 @@ def _repl_loop(session: dict) -> None:
         "plan_dir": plan_dir,
         "workspace_root": workspace,
         "skill_registry": skill_registry,
+        "agent_depth": 0,
+        "subagent_config": subagent_config,
+        "llm": {
+            "client": client,
+            "model": model,
+            "timeout": timeout,
+            "tools": tools,
+            "system_prompt": system_prompt,
+            "context_config": context_config,
+        },
     }
     if memory_store is not None:
         context["memory_store"] = memory_store

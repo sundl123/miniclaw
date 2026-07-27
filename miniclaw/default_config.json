@@ -47,6 +47,10 @@
     "search_window": 5,
     "browse_limit": 10
   },
+  "subagent": {
+    "enabled": false,
+    "max_turns": 30
+  },
   "tools": {
     "read": {
       "max_file_bytes": 262144,

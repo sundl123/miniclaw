@@ -28,6 +28,7 @@ from miniclaw.sessions.config import (
     DEFAULT_SEARCH_WINDOW,
     SessionsConfig,
 )
+from miniclaw.subagent.config import DEFAULT_MAX_TURNS, SubagentConfig
 
 _CONFIG_FILENAME = "config.json"
 _CONFIG_SUBDIR = ".miniclaw"
@@ -237,6 +238,26 @@ def get_sessions_config(workspace_root: str) -> SessionsConfig:
         search_window=int(raw.get("search_window", DEFAULT_SEARCH_WINDOW)),
         browse_limit=int(raw.get("browse_limit", DEFAULT_BROWSE_LIMIT)),
     )
+
+
+def get_subagent_config(workspace_root: str) -> SubagentConfig:
+    """Load subagent feature config from merged config."""
+    raw = load_merged_config(workspace_root).get("subagent", {})
+    if not isinstance(raw, dict):
+        raw = {}
+
+    if os.environ.get("MINICLAW_SUBAGENT", "").strip() in ("1", "true", "yes"):
+        enabled = True
+    elif os.environ.get("MINICLAW_SUBAGENT", "").strip() in ("0", "false", "no"):
+        enabled = False
+    else:
+        enabled = bool(raw.get("enabled", False))
+
+    max_turns = int(raw.get("max_turns", DEFAULT_MAX_TURNS))
+    if max_turns < 1:
+        max_turns = DEFAULT_MAX_TURNS
+
+    return SubagentConfig(enabled=enabled, max_turns=max_turns)
 
 
 def get_tools_config(workspace_root: str) -> ToolsConfig:

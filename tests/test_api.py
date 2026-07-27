@@ -165,6 +165,54 @@ class TestRunTurnWithContext(unittest.TestCase):
         self.assertEqual(reply, "final")
         self.assertEqual(mock_manage.call_count, 2)
 
+    def test_max_turns_truncates(self):
+        """After max_turns tool rounds, stop and set _subagent_truncated."""
+        usage_obj = MagicMock()
+        usage_obj.prompt_tokens = 10
+        usage_obj.completion_tokens = 5
+        usage_obj.prompt_tokens_details = None
+
+        def _tool_stream(call_id: str):
+            return [
+                _FakeChunk(delta=_FakeDelta(
+                    content="",
+                    tool_calls=[
+                        _FakeToolCallDelta(
+                            0, id=call_id, name="bash",
+                            arguments='{"command": "ls"}',
+                        ),
+                    ],
+                )),
+                _FakeChunk(usage=usage_obj),
+            ]
+
+        # Round 1 tool_calls → execute; round 2 tool_calls → truncate (max_turns=1)
+        client = MagicMock()
+        client.chat.completions.create.side_effect = [
+            iter(_tool_stream("call_1")),
+            iter(_tool_stream("call_2")),
+        ]
+        ctx: dict = {}
+
+        with patch("miniclaw.api._execute_tool_call", return_value="ok") as mock_exec:
+            reply, messages = run_turn_with_tools(
+                client, "model",
+                [{"role": "user", "content": "hi"}],
+                [{"type": "function", "function": {"name": "bash"}}],
+                print_reasoning=False,
+                context=ctx,
+                max_turns=1,
+            )
+
+        self.assertTrue(ctx.get("_subagent_truncated"))
+        self.assertEqual(mock_exec.call_count, 1)
+        # Incomplete second assistant tool_calls message should be popped
+        self.assertFalse(
+            any(m.get("role") == "assistant" and m.get("tool_calls") and
+                any((tc.get("id") == "call_2") for tc in (m.get("tool_calls") or []))
+                for m in messages)
+        )
+
 
 class TestCreateClient(unittest.TestCase):
     def test_returns_openai_client(self):

@@ -3,8 +3,9 @@
 > 本文记录 miniclaw **同步 Sub-Agent** 功能的设计结论，作为后续实现的参考。
 > 调研材料见 Claude Code 仓库 `docs/subagent-implementation.md`。
 
-**状态**：设计中（未实现）
+**状态**：已实现（v1，默认关闭）
 **创建日期**：2026-07-27
+**最后更新**：2026-07-27
 
 ---
 
@@ -424,14 +425,14 @@ Agent
 
 ## 9. 实现检查清单（供开工用）
 
-- [ ] `SubagentConfig` + `settings.get_subagent_config` + `default_config.json`
-- [ ] `miniclaw/subagent/`：types / prompt / runner / tool
-- [ ] `get_tool_schemas(include_agent=…)` + `execute_tool` 分发
-- [ ] `cli.py` context 注入 `llm` + `agent_depth`
-- [ ] `run_turn_with_tools(..., max_turns=)`
-- [ ] Explore 只读 bash 强制
-- [ ] UI 缩进 / 起止日志
-- [ ] 单元测试（上表）
+- [x] `SubagentConfig` + `settings.get_subagent_config` + `default_config.json`
+- [x] `miniclaw/subagent/`：types / prompt / runner / tool
+- [x] `get_tool_schemas(include_agent=…)` + `execute_tool` 分发
+- [x] `cli.py` context 注入 `llm` + `agent_depth`
+- [x] `run_turn_with_tools(..., max_turns=)`
+- [x] Explore 只读 bash 强制
+- [x] UI 缩进 / 起止日志
+- [x] 单元测试（上表）
 - [ ] 手动：开启 flag 后用 explore 查一个真实小仓库并确认父上下文未被中间 grep 填满
 
 ---
