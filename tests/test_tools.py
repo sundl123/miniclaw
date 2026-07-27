@@ -92,6 +92,24 @@ class TestResolveReadPath(unittest.TestCase):
                             secret, root, registered_skill_dirs=frozenset({skill_dir}),
                         )
 
+    def test_allowed_read_file_exact_match(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as records_dir:
+                allowed = os.path.join(records_dir, "2026-07-27_abc.jsonl")
+                sibling = os.path.join(records_dir, "other.jsonl")
+                with open(allowed, "w") as f:
+                    f.write('{"role":"user"}\n')
+                with open(sibling, "w") as f:
+                    f.write("nope\n")
+                resolved = resolve_read_path(
+                    allowed, root, allowed_read_files=frozenset({allowed}),
+                )
+                self.assertEqual(resolved, os.path.normpath(allowed))
+                with self.assertRaises(PermissionError):
+                    resolve_read_path(
+                        sibling, root, allowed_read_files=frozenset({allowed}),
+                    )
+
 
 class TestResolveGlobPattern(unittest.TestCase):
     def test_relative_pattern_uses_workspace(self):
@@ -185,6 +203,62 @@ class TestHandleSkill(unittest.TestCase):
             data = json.loads(out)
             self.assertIn("error", data)
             self.assertIn("missing", data["error"])
+
+
+class TestRecordsJsonlAllowlist(unittest.TestCase):
+    def test_read_current_session_jsonl(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as records_dir:
+                jsonl = os.path.join(records_dir, "2026-07-27_sess.jsonl")
+                with open(jsonl, "w") as f:
+                    f.write('{"role":"user","content":"hello transcript"}\n')
+                ctx = {"records_jsonl_path": jsonl}
+                out = handle_read(
+                    {"path": jsonl, "offset": 0, "limit": 5},
+                    root,
+                    context=ctx,
+                )
+                self.assertIn("hello transcript", out)
+
+    def test_read_sibling_jsonl_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as records_dir:
+                allowed = os.path.join(records_dir, "allowed.jsonl")
+                sibling = os.path.join(records_dir, "sibling.jsonl")
+                with open(allowed, "w") as f:
+                    f.write("ok\n")
+                with open(sibling, "w") as f:
+                    f.write("secret\n")
+                ctx = {"records_jsonl_path": allowed}
+                out = handle_read({"path": sibling}, root, context=ctx)
+                self.assertIn("error", json.loads(out))
+
+    def test_grep_current_session_jsonl(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as records_dir:
+                jsonl = os.path.join(records_dir, "sess.jsonl")
+                with open(jsonl, "w") as f:
+                    f.write('{"role":"user","content":"findme-keyword"}\n')
+                ctx = {"records_jsonl_path": jsonl}
+                out = handle_grep(
+                    {"pattern": "findme-keyword", "path": jsonl},
+                    root,
+                    context=ctx,
+                )
+                self.assertIn("findme-keyword", out)
+
+    def test_grep_without_context_rejected(self):
+        with tempfile.TemporaryDirectory() as root:
+            with tempfile.TemporaryDirectory() as records_dir:
+                jsonl = os.path.join(records_dir, "sess.jsonl")
+                with open(jsonl, "w") as f:
+                    f.write('{"role":"user"}\n')
+                out = handle_grep(
+                    {"pattern": "user", "path": jsonl},
+                    root,
+                    context={},
+                )
+                self.assertIn("error", json.loads(out))
 
 
 class TestHandleRead(unittest.TestCase):

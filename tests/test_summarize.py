@@ -166,6 +166,32 @@ class TestCompactBoundaryContent(unittest.TestCase):
         )
         self.assertEqual(len(compact_boundary_content(msgs, max_chars=100)), 100)
 
+    def test_includes_transcript_hint_when_path_given(self):
+        path = "/Users/me/.miniclaw/records/2026-07-27_abcd.jsonl"
+        msgs = _rebuild_messages(
+            {"role": "system", "content": "sys"},
+            "hello summary",
+            [],
+            transcript_path=path,
+            session_id="abcd",
+        )
+        content = compact_boundary_content(msgs)
+        self.assertIn(path, content)
+        self.assertIn("session_id: abcd", content)
+        self.assertIn("Do NOT read the whole file", content)
+        self.assertIn("grep", content.lower())
+        self.assertIn("offset/limit", content)
+
+    def test_omits_transcript_hint_without_path(self):
+        msgs = _rebuild_messages(
+            {"role": "system", "content": "sys"},
+            "hello summary",
+            [],
+        )
+        content = compact_boundary_content(msgs)
+        self.assertNotIn("Full transcript", content)
+        self.assertNotIn("session_id:", content)
+
 
 class TestSummarize(unittest.TestCase):
     def test_rebuilds_messages_on_success(self):

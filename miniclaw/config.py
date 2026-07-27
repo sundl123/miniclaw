@@ -18,11 +18,15 @@ def is_allowed_read_path(
     workspace_root: str,
     *,
     registered_skill_dirs: frozenset[str] = frozenset(),
+    allowed_read_files: frozenset[str] = frozenset(),
 ) -> bool:
-    """判断绝对路径是否在 workspace 或已注册 skill 目录下。"""
-    if _is_under_dir(abs_path, workspace_root):
+    """判断绝对路径是否在 workspace、已注册 skill 目录、或精确允许的只读文件列表中。"""
+    norm = os.path.normpath(abs_path)
+    if _is_under_dir(norm, workspace_root):
         return True
-    return any(_is_under_dir(abs_path, skill_dir) for skill_dir in registered_skill_dirs)
+    if any(_is_under_dir(norm, skill_dir) for skill_dir in registered_skill_dirs):
+        return True
+    return any(norm == os.path.normpath(f) for f in allowed_read_files)
 
 
 def get_local_iso_date() -> str:
@@ -50,12 +54,16 @@ def resolve_read_path(
     workspace_root: str,
     *,
     registered_skill_dirs: frozenset[str] = frozenset(),
+    allowed_read_files: frozenset[str] = frozenset(),
 ) -> str:
-    """解析 read/grep 路径：workspace 内路径 + 已注册 skill 目录下的绝对路径。"""
+    """解析 read/grep 路径：workspace、已注册 skill 目录、或精确允许的只读文件。"""
     if os.path.isabs(path):
         abs_path = os.path.normpath(path)
         if is_allowed_read_path(
-            abs_path, workspace_root, registered_skill_dirs=registered_skill_dirs,
+            abs_path,
+            workspace_root,
+            registered_skill_dirs=registered_skill_dirs,
+            allowed_read_files=allowed_read_files,
         ):
             return abs_path
         raise PermissionError(f"路径不允许读取: {path}")
@@ -80,6 +88,7 @@ def resolve_glob_pattern(
     workspace_root: str,
     *,
     registered_skill_dirs: frozenset[str] = frozenset(),
+    allowed_read_files: frozenset[str] = frozenset(),
 ) -> tuple[str, str]:
     """返回 (full_glob_pattern, result_base)。
 
@@ -88,7 +97,12 @@ def resolve_glob_pattern(
     workspace_root = os.path.normpath(workspace_root)
     if os.path.isabs(pattern):
         prefix = _glob_static_prefix(pattern)
-        resolve_read_path(prefix, workspace_root, registered_skill_dirs=registered_skill_dirs)
+        resolve_read_path(
+            prefix,
+            workspace_root,
+            registered_skill_dirs=registered_skill_dirs,
+            allowed_read_files=allowed_read_files,
+        )
         return pattern, prefix
     full_pattern = os.path.join(workspace_root, pattern)
     return full_pattern, workspace_root

@@ -80,6 +80,13 @@ def _finalize_summarize_success(
     )
 
 
+def _transcript_hint(context: Optional[dict]) -> tuple[str | None, str | None]:
+    ctx = context or {}
+    path = ctx.get("records_jsonl_path")
+    session_id = ctx.get("session_id")
+    return (path if path else None, session_id if session_id else None)
+
+
 def _try_auto_summarize(
     client: OpenAI,
     model: str,
@@ -108,9 +115,12 @@ def _try_auto_summarize(
     ctx["compacting"] = True
     _notify_progress(on_progress, "start")
     messages_before = len(messages)
+    transcript_path, session_id = _transcript_hint(context)
     try:
         new_messages, ok = summarize_conversation(
             client, model, messages, cfg, timeout=timeout,
+            transcript_path=transcript_path,
+            session_id=session_id,
         )
         if ok:
             _finalize_summarize_success(
@@ -180,11 +190,14 @@ def manual_compact(
     ctx = get_ctx_mgmt(context)
     ctx["compacting"] = True
     _notify_progress(on_compact_progress, "start")
+    transcript_path, session_id = _transcript_hint(context)
     try:
         new_messages, ok = summarize_conversation(
             client, model, messages, cfg,
             extra_instructions=extra_instructions,
             timeout=timeout,
+            transcript_path=transcript_path,
+            session_id=session_id,
         )
         if ok:
             _finalize_summarize_success(

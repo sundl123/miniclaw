@@ -36,6 +36,13 @@ def _registered_skill_dirs(context: dict | None) -> frozenset[str]:
     return registry.skill_dirs() if registry else frozenset()
 
 
+def _allowed_read_files(context: dict | None) -> frozenset[str]:
+    path = (context or {}).get("records_jsonl_path")
+    if not path:
+        return frozenset()
+    return frozenset({os.path.normpath(path)})
+
+
 def handle_read(
     args: dict,
     workspace_root: str,
@@ -50,9 +57,13 @@ def handle_read(
 
     cfg = (tools_cfg or get_tools_config(workspace_root)).read
     skill_dirs = _registered_skill_dirs(context)
+    allowed_files = _allowed_read_files(context)
     try:
         abs_path = resolve_read_path(
-            path, workspace_root, registered_skill_dirs=skill_dirs,
+            path,
+            workspace_root,
+            registered_skill_dirs=skill_dirs,
+            allowed_read_files=allowed_files,
         )
     except PermissionError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -190,15 +201,19 @@ def handle_grep(
     *,
     context: dict | None = None,
 ) -> str:
-    """在工作区或已注册 skill 目录内用 grep 搜索文件内容。"""
+    """在工作区、已注册 skill 目录、或允许的 session transcript 内用 grep 搜索。"""
     pattern = args.get("pattern") or ""
     if not pattern:
         return json.dumps({"error": "grep 需要 pattern 参数"}, ensure_ascii=False)
     search_path = args.get("path") or workspace_root
     skill_dirs = _registered_skill_dirs(context)
+    allowed_files = _allowed_read_files(context)
     try:
         abs_search = resolve_read_path(
-            search_path, workspace_root, registered_skill_dirs=skill_dirs,
+            search_path,
+            workspace_root,
+            registered_skill_dirs=skill_dirs,
+            allowed_read_files=allowed_files,
         )
     except PermissionError as e:
         return json.dumps({"error": str(e)}, ensure_ascii=False)
@@ -374,7 +389,10 @@ def get_tool_schemas(*, include_memory: bool = False, include_session_search: bo
             "description": (
                 "Read a file and return its content with line numbers (0-based offset). "
                 "For large files you MUST use limit; without limit, files over 256KB are rejected. "
-                "If output is still too large with limit, results may be truncated."
+                "If output is still too large with limit, results may be truncated. "
+                "After context compaction, you may read the current session transcript path "
+                "given in the compact boundary — use a small limit; individual JSONL lines "
+                "(especially tool outputs) can also be very large."
             ),
             "parameters": {"type": "object", "properties": {
                 "path": {
@@ -431,8 +449,10 @@ def get_tool_schemas(*, include_memory: bool = False, include_session_search: bo
         {"type": "function", "function": {
             "name": "grep",
             "description": (
-                "Search file contents for a pattern (regex) within the workspace or a "
-                "registered skill directory (absolute path)."
+                "Search file contents for a pattern (regex) within the workspace, a "
+                "registered skill directory, or the current session transcript path "
+                "from a compact boundary (absolute path). Prefer grep before reading "
+                "large transcripts."
             ),
             "parameters": {"type": "object", "properties": {
                 "pattern": {"type": "string", "description": "Search pattern (regex)"},

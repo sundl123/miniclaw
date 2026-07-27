@@ -51,6 +51,7 @@ Phase 1 **未做**：/reflect、AGENTS.md 加载、auto-skill。
 | **ID** | `session_id`（进程级）+ `seq`（session 内单调递增）；DB 内部 `id` 仅 FTS rowid，不暴露给模型 |
 | **session_search tool** | `browse` / `discovery`（query）/ `scroll`（session_id + around_seq） |
 | **当前 session** | browse/discovery **默认排除**当前 session（避免重复）；scroll 拒绝当前 session |
+| **compact 后找回** | compact boundary 注入当前 session JSONL 绝对路径；`read`/`grep` 精确放行该文件（小窗口） |
 
 配置（`config.json`，与 `memory.enabled` 独立）：
 
@@ -69,7 +70,7 @@ Phase 1 **未做**：/reflect、AGENTS.md 加载、auto-skill。
 - **memory** — 跨 session 精炼笔记（MEMORY.md）
 - **session_search** — 历史对话检索（「上次聊到哪了」）
 
-Phase 2 **未做**：`/reflect`、搜索当前 session（compact 后找回）、CJK trigram FTS、read 整 session dump。
+Phase 2 **未做**：`/reflect`、CJK trigram FTS、session_search 搜当前 session、read 整 session dump（compact 后找回已由当前 JSONL 的定点 read/grep 覆盖）。
 
 ---
 
@@ -422,12 +423,13 @@ miniclaw/
 - [x] JSONL + SQLite 双写 records
 - [x] `session_search` tool（browse / discovery / scroll）
 - [x] context_compact 元事件写入 records
+- [x] compact 后通过当前 session JSONL 的 read/grep 找回细节
 
 **Phase 2c+（计划中）**
 
 - [ ] `/reflect` heartbeat
 - [ ] auto-skill 生成
-- [ ] 搜索当前 session（compact 后内容找回）
+- [ ] session_search 搜索当前 session
 
 ---
 

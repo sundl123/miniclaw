@@ -118,6 +118,7 @@ def _repl_loop(session: dict) -> None:
         context["records_writer"] = records_writer
         context["session_id"] = records_writer.session_id
         context["session_db"] = records_writer.db
+        context["records_jsonl_path"] = records_writer.jsonl_path
         context["sessions_config"] = session.get("sessions_config")
     init_ctx_mgmt(context)
 

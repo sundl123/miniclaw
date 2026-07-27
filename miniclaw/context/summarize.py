@@ -213,6 +213,9 @@ def _rebuild_messages(
     system_msg: dict,
     summary_text: str,
     tail: list[dict],
+    *,
+    transcript_path: str | None = None,
+    session_id: str | None = None,
 ) -> list[dict]:
     boundary = (
         "This session is being continued from a previous conversation that ran out of context.\n"
@@ -220,6 +223,18 @@ def _rebuild_messages(
         f"Summary:\n{summary_text}\n\n"
         "Recent messages are preserved verbatim below."
     )
+    if transcript_path:
+        sid = session_id or "unknown"
+        boundary += (
+            "\n\n"
+            "Full transcript of this session (including turns summarized above):\n"
+            f"  path: {transcript_path}\n"
+            f"  session_id: {sid}\n"
+            "This JSONL file may be large, and individual lines (especially tool outputs) "
+            "can also be very large. Do NOT read the whole file. When you need a specific "
+            "detail missing from the summary, grep for keywords first, then read a small "
+            "window with offset/limit."
+        )
     return [
         system_msg,
         {"role": "user", "content": boundary, "is_compact_summary": True},
@@ -235,6 +250,8 @@ def summarize_conversation(
     *,
     extra_instructions: str = "",
     timeout: int = DEFAULT_HTTP_TIMEOUT,
+    transcript_path: str | None = None,
+    session_id: str | None = None,
 ) -> tuple[list[dict], bool]:
     """Summarize conversation history. Returns (new_messages, success)."""
     if len(messages) < 2:
@@ -280,6 +297,12 @@ def summarize_conversation(
         summary = _parse_summary(raw)
         if not summary or not _is_valid_summary(summary):
             return messages, False
-        return _rebuild_messages(system_msg, summary, tail), True
+        return _rebuild_messages(
+            system_msg,
+            summary,
+            tail,
+            transcript_path=transcript_path,
+            session_id=session_id,
+        ), True
     except Exception:
         return messages, False

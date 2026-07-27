@@ -45,6 +45,10 @@ class RecordsWriter:
     def db(self) -> SessionDB:
         return self._db
 
+    @property
+    def jsonl_path(self) -> str:
+        return self._jsonl_path
+
     @classmethod
     def open(
         cls,
