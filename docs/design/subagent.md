@@ -135,7 +135,7 @@ Claude Code 的 Sub-Agent 本质是：**主 Agent 通过 `Agent` 工具，在同
 ```json
 "subagent": {
   "enabled": false,
-  "max_turns": 30
+  "max_turns": 300
 }
 ```
 
@@ -218,7 +218,7 @@ Worker 指令要点（实现时可微调文案）：
 | general 工具 | 父当前 tools − `Agent`；**不含** `memory`、`session_search`（见下） |
 | explore 工具 | `read` / `grep` / `glob` / `bash` / `Skill`；bash 走只读检查 |
 | plan mode | 子 Agent **继承**父 `context["mode"]`；父在 plan 时子也受写拦截 |
-| max_turns | 子循环 tool 迭代上限，默认 `subagent.max_turns`（建议 30） |
+| max_turns | 子循环 tool 迭代上限，默认 `subagent.max_turns`（建议 300） |
 
 关于 **memory / session_search**：
 
@@ -364,14 +364,14 @@ Agent
 ```json
 "subagent": {
   "enabled": false,
-  "max_turns": 30
+  "max_turns": 300
 }
 ```
 
 | 字段 | 默认 | 含义 |
 |------|------|------|
 | `enabled` | `false` | 是否向**主** Agent 暴露 `Agent` 工具 |
-| `max_turns` | `30` | 子循环内「模型响应且含 tool_calls」的最大轮数 |
+| `max_turns` | `300` | 子循环内「模型响应且含 tool_calls」的最大轮数 |
 
 环境变量（可选，实现阶段再定是否需要）：`MINICLAW_SUBAGENT=1` 覆盖开启，便于测试而不改配置文件。
 

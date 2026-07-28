@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-DEFAULT_MAX_TURNS = 30
+DEFAULT_MAX_TURNS = 300
 
 
 @dataclass(frozen=True)

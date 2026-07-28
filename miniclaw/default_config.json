@@ -49,7 +49,7 @@
   },
   "subagent": {
     "enabled": false,
-    "max_turns": 30
+    "max_turns": 300
   },
   "tools": {
     "read": {
