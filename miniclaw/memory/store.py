@@ -26,7 +26,7 @@ from miniclaw.memory.paths import (
 from miniclaw.memory.prompt import format_memory_system_block
 from miniclaw.read_file import FileTooLargeError, read_file_lines
 from miniclaw.tool_output import enforce_read_output_limits
-from miniclaw.tools_config import ReadToolConfig
+from miniclaw.tools.config import ReadToolConfig
 
 
 class MemoryStore:

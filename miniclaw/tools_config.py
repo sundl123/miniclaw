@@ -1,17 +1,9 @@
-"""Tool output limit configuration."""
+"""Backward-compatible re-export of tool config dataclasses.
+
+Prefer ``from miniclaw.tools.config import ReadToolConfig, ToolsConfig``.
+"""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from miniclaw.tools.config import ReadToolConfig, ToolsConfig
 
-
-@dataclass
-class ReadToolConfig:
-    max_file_bytes: int = 262144  # 256 KB
-    max_output_tokens: int = 8000
-
-
-@dataclass
-class ToolsConfig:
-    read: ReadToolConfig
-    max_tool_result_chars: int = 100_000
-    max_glob_files: int = 500
+__all__ = ["ReadToolConfig", "ToolsConfig"]

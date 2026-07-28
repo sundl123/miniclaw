@@ -13,7 +13,7 @@ from miniclaw.context.config import (
     MicroCompactConfig,
     SummarizeConfig,
 )
-from miniclaw.tools_config import ReadToolConfig, ToolsConfig
+from miniclaw.tools.config import ReadToolConfig, ToolsConfig
 from miniclaw.dirs import get_user_data_dir
 from miniclaw.memory.config import (
     DEFAULT_MEMORY_MD_MAX_BYTES,

@@ -9,7 +9,7 @@ from miniclaw.memory.config import MEMORY_MD_FILENAME, MemoryConfig
 from miniclaw.memory.store import MemoryStore
 from miniclaw.memory.tool import handle_memory
 from miniclaw.tools import execute_tool, get_tool_schemas
-from miniclaw.tools_config import ReadToolConfig, ToolsConfig
+from miniclaw.tools.config import ReadToolConfig, ToolsConfig
 
 
 class TestMemoryTool(unittest.TestCase):

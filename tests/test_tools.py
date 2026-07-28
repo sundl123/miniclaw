@@ -24,7 +24,7 @@ from miniclaw.plan_mode import (
     is_readonly_bash,
 )
 from miniclaw.settings import load_workspace_config, get_plan_allowed_patterns
-from miniclaw.tools_config import ReadToolConfig, ToolsConfig
+from miniclaw.tools.config import ReadToolConfig, ToolsConfig
 from miniclaw.skills import SkillEntry, SkillRegistry
 
 

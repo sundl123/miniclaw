@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 
 from miniclaw.memory.store import MemoryStore
-from miniclaw.tools_config import ReadToolConfig, ToolsConfig
+from miniclaw.tools.config import ReadToolConfig, ToolsConfig
 
 MEMORY_TOOL_DESCRIPTION = (
     "Read and write persistent memory under ~/.miniclaw/memory/.\n\n"
