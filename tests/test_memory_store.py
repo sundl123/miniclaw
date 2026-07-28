@@ -8,7 +8,7 @@ from miniclaw.memory.budget import ContentMeasure
 from miniclaw.memory.config import MEMORY_MD_FILENAME, MemoryConfig
 from miniclaw.memory.paths import normalize_memory_rel_path, resolve_memory_path
 from miniclaw.memory.store import MemoryStore
-from miniclaw.tools_config import ReadToolConfig
+from miniclaw.tools.config import ReadToolConfig
 
 
 class TestMemoryPaths(unittest.TestCase):
