@@ -34,11 +34,12 @@ If you want to **learn**, **teach**, or **hack on** an AI agent, start here.
 
 ## Features
 
-- **9 Tools** -- `read`, `write`, `edit`, `glob`, `grep`, `bash`, `Skill`, `memory`, `session_search`. Workspace file ops plus on-demand skills, persistent memory, and past-session recall.
+- **10 Tools** -- `read`, `write`, `edit`, `glob`, `grep`, `bash`, `Skill`, `memory`, `session_search`, `Agent`. Workspace file ops plus on-demand skills, persistent memory, past-session recall, and sub-agents.
 - **Plan Mode** -- The agent can enter a read-only planning phase: explore code, produce a structured plan, then execute only after you approve. Write operations are blocked until you say go.
 - **Skills System** -- Drop a `SKILL.md` into `.miniclaw/skills/<name>/` and the agent learns new tricks. Skills are injected into the system prompt automatically; the `Skill` tool loads full instructions on demand.
 - **Memory** -- Durable facts live in `~/.miniclaw/memory/MEMORY.md` and are auto-injected each session. The agent can read/write topic files for longer notes.
 - **Session Search** -- Conversations are recorded locally; the agent can browse, full-text search, or scroll through past sessions.
+- **Sub-agents** -- Optional `Agent` tool spawns an isolated sub-agent (`explore` / `general`) so research or side tasks don't pollute the main context. Enable with `subagent.enabled`.
 - **Context Management** -- Micro-compaction and auto-summarize keep long conversations within the context window.
 - **Any OpenAI-compatible LLM** -- Swap models by changing one environment variable. Default: MiniMax-M2.7.
 - **Workspace Isolation** -- All file operations are sandboxed to your workspace directory. No `..` path escapes.
@@ -92,7 +93,7 @@ The entire agent fits in a handful of Python modules. Here's the core loop:
 flowchart LR
     User([You]) -->|message| REPL[cli.py<br>REPL]
     REPL -->|messages + tools| LLM[api.py<br>LLM API]
-    LLM -->|tool_call| Tools[tools.py<br>9 Tools]
+    LLM -->|tool_call| Tools[tools/<br>10 Tools]
     Tools -->|result| LLM
     LLM -->|final reply| REPL
     REPL -->|display| User
@@ -104,10 +105,11 @@ Each module has a single responsibility -- read through them in this order:
 |--------|-------------|
 | [`cli.py`](miniclaw/cli.py) | Command-line REPL, parses input, handles `/plan`, `/clear`, etc. |
 | [`api.py`](miniclaw/api.py) | Sends messages to the LLM, runs the tool-call loop until the model stops calling tools |
-| [`tools.py`](miniclaw/tools.py) | Implements workspace tools + dispatches `Skill`, `memory`, `session_search` |
+| [`tools/`](miniclaw/tools/) | Workspace tools + dispatch for `Skill`, `memory`, `session_search`, `Agent` |
 | [`context/`](miniclaw/context/) | Micro-compaction, auto-summarize, context window management |
 | [`memory/`](miniclaw/memory/) | Persistent memory store and `memory` tool |
 | [`sessions/`](miniclaw/sessions/) | Session DB, event records, and `session_search` tool |
+| [`subagent/`](miniclaw/subagent/) | Sub-agent runner and `Agent` tool |
 | [`plan_mode.py`](miniclaw/plan_mode.py) | Permission guard for plan mode: allows read-only ops, blocks writes |
 | [`skills.py`](miniclaw/skills.py) | Scans `.miniclaw/skills/` and injects skill metadata into the system prompt |
 | [`settings.py`](miniclaw/settings.py) | Loads and merges config from global + workspace JSON files |
@@ -150,6 +152,10 @@ Run `miniclaw init` to create the default config. Use `miniclaw init --force` to
   },
   "sessions": {
     "enabled": true
+  },
+  "subagent": {
+    "enabled": false,
+    "max_turns": 300
   }
 }
 ```
@@ -193,10 +199,11 @@ miniclaw/
 ├── miniclaw/            # The Python package
 │   ├── cli.py           # REPL
 │   ├── api.py           # LLM API + tool loop
-│   ├── tools.py         # Tool dispatch
+│   ├── tools/           # Tool implementations + dispatch
 │   ├── context/         # Context compaction + summarization
 │   ├── memory/          # Persistent memory tool
 │   ├── sessions/        # Session records + search
+│   ├── subagent/        # Sub-agent runner + Agent tool
 │   ├── plan_mode.py     # Plan mode permissions
 │   ├── config.py        # Path safety + constants
 │   ├── dirs.py          # Directory resolution
@@ -206,7 +213,6 @@ miniclaw/
 │   └── dev_logging.py   # Dev logging
 ├── tests/               # Unit tests
 └── docs/design/         # Design docs
-    └── miniclaw-architecture-analysis.md
 ```
 
 ## Changelog
@@ -218,6 +224,7 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 | Document | Description |
 |----------|-------------|
 | [架构分析](docs/design/miniclaw-architecture-analysis.md) | 从 Agent Loop、Skill 机制、Tool 设计、Prompt Cache、Plan Mode 五个维度深入分析项目架构 |
+| [Sub-agent](docs/design/subagent.md) | Sub-agent（`Agent` tool）设计与实现说明 |
 
 ## Running Tests
 

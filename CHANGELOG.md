@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.1.4] - 2026-07-28
+
+### Added
+
+- **Sub-agent (`Agent` tool)** — spawn a synchronous sub-agent with an isolated context; `general` for edit-capable tasks, `explore` for read-only research. Configurable via `subagent.enabled` / `subagent.max_turns` (default 300).
+- **Session transcript access** — `read` / `grep` can open the current session JSONL; auto-summarize injects a transcript path hint so the model can recover details after compaction.
+
+### Changed
+
+- Split monolithic `tools.py` into the `miniclaw/tools/` package (`read`, `write`, `search`, `bash`, `skill`, schemas, dispatch).
+
 ## [0.1.3] - 2026-06-23
 
 ### Added
@@ -42,6 +53,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 Initial PyPI release — CLI REPL with six workspace tools, skills system, and MiniMax default model.
 
+[0.1.4]: https://github.com/sundl123/miniclaw/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/sundl123/miniclaw/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/sundl123/miniclaw/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/sundl123/miniclaw/compare/v0.1.0...v0.1.1
