@@ -60,6 +60,25 @@ class TestFilterTools(unittest.TestCase):
         names = {s["function"]["name"] for s in filter_tools_for_agent(self.parent, EXPLORE)}
         self.assertEqual(names, {"read", "grep", "glob", "bash", "Skill"})
 
+    def test_todo_write_general_only(self):
+        """general 可以自己维护任务清单；explore 只读，拿不到 todo_write。
+
+        用真实 schema 列表，确保 todo_write 真的在父工具池里。
+        """
+        real_parent = get_tool_schemas(
+            include_memory=True, include_session_search=True, include_agent=True,
+        )
+        self.assertIn(
+            "todo_write",
+            {s["function"]["name"] for s in real_parent},
+        )
+        general = {s["function"]["name"]
+                   for s in filter_tools_for_agent(real_parent, GENERAL)}
+        explore = {s["function"]["name"]
+                   for s in filter_tools_for_agent(real_parent, EXPLORE)}
+        self.assertIn("todo_write", general)
+        self.assertNotIn("todo_write", explore)
+
 
 class TestSchemas(unittest.TestCase):
     def test_include_agent_false(self):
@@ -94,13 +113,16 @@ class TestChildContext(unittest.TestCase):
             "mode": "plan",
             "records_writer": object(),
             "skill_registry": "reg",
+            "todos": [{"content": "parent task", "status": "in_progress"}],
         }
         child = build_child_context(parent, definition=EXPLORE)
         self.assertEqual(child["agent_depth"], 1)
         self.assertTrue(child["readonly_bash_only"])
         self.assertNotIn("records_writer", child)
+        self.assertNotIn("todos", child)  # sub-agent must not inherit parent plan
         self.assertEqual(child["mode"], "plan")
         self.assertEqual(parent["agent_depth"], 0)  # parent untouched
+        self.assertEqual(len(parent["todos"]), 1)  # parent plan untouched
 
 
 class TestDepthGuard(unittest.TestCase):

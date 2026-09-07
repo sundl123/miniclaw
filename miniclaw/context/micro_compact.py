@@ -34,6 +34,8 @@ TOOL_COMPACT_POLICY: dict[str, CompactPolicy] = {
         truncate_input_fields=frozenset({"old_string", "new_string"}),
         truncate_chars=80,
     ),
+    # 任务清单是模型的 self-conditioning 依据，压掉会让它忘记自己的计划。
+    "todo_write": CompactPolicy(compact_output=False),
     "enter_plan_mode": CompactPolicy(compact_output=False),
     "exit_plan_mode": CompactPolicy(compact_output=False),
 }

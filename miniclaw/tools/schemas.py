@@ -109,6 +109,61 @@ def get_tool_schemas(
                 },
             }, "required": ["skill"]},
         }},
+        {"type": "function", "function": {
+            "name": "todo_write",
+            "description": (
+                "Create and manage a task list for your current coding session. "
+                "Use this to track progress on complex multi-step tasks. "
+                "Tasks have status: pending, in_progress, completed, cancelled. "
+                "Set merge=true to update existing tasks by id; merge=false replaces all."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "todos": {
+                    "type": "array",
+                    "description": "Task list. Each item: {content (text), status (pending|in_progress|completed|cancelled), id? (string for merge)}",
+                    "items": {"type": "object", "properties": {
+                        "content": {"type": "string", "description": "Task description"},
+                        "status": {
+                            "type": "string",
+                            "enum": ["pending", "in_progress", "completed", "cancelled"],
+                            "description": "Task status",
+                        },
+                        "id": {"type": "string", "description": "Optional stable ID for merge mode"},
+                    }, "required": ["content", "status"]},
+                },
+                "merge": {
+                    "type": "boolean",
+                    "description": "If true, merge with existing tasks by id; if false, replace all tasks",
+                },
+            }, "required": ["todos", "merge"]},
+        }},
+        {"type": "function", "function": {
+            "name": "ask_followup_question",
+            "description": (
+                "Ask the user a clarifying question when requirements are ambiguous "
+                "or you need to confirm a decision. Supports multiple-choice options "
+                "and free-text answers."
+            ),
+            "parameters": {"type": "object", "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question text to ask the user",
+                },
+                "header": {
+                    "type": "string",
+                    "description": "Optional short title",
+                },
+                "options": {
+                    "type": "array",
+                    "description": "Optional list of options. Each can be a string or {label, description}",
+                    "items": {},
+                },
+                "multi_select": {
+                    "type": "boolean",
+                    "description": "Whether multiple options can be selected",
+                },
+            }, "required": ["question"]},
+        }},
     ]
     if include_memory:
         schemas.append(get_memory_tool_schema())

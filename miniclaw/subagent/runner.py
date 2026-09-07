@@ -13,6 +13,7 @@ from miniclaw.subagent.types import (
     AgentDefinition,
     resolve_agent_definition,
 )
+from miniclaw.tools.todo_write import TODOS_CONTEXT_KEY
 from miniclaw.ui import print_agent_done, print_agent_start
 
 
@@ -47,6 +48,8 @@ def build_child_context(
     child["readonly_bash_only"] = bool(definition.readonly)
     # Do not write child transcript into the parent session records.
     child.pop("records_writer", None)
+    # Sub-agents track their own task list; never inherit or clobber the parent plan.
+    child.pop(TODOS_CONTEXT_KEY, None)
     return child
 
 

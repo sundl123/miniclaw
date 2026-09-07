@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Your tiny coding claw</strong><br>
-  <em>Learn to build an AI coding agent in ~1500 lines of Python</em>
+  <em>Learn to build an AI coding agent in ~2000 lines of Python</em>
 </p>
 
 <p align="center">
@@ -40,13 +40,15 @@ If you want to **learn**, **teach**, or **hack on** an AI agent, start here.
 
 ## Features
 
-- **10 Tools** -- `read`, `write`, `edit`, `glob`, `grep`, `bash`, `Skill`, `memory`, `session_search`, `Agent`. Workspace file ops plus on-demand skills, persistent memory, past-session recall, and sub-agents.
+- **12 Tools** -- `read`, `write`, `edit`, `glob`, `grep`, `bash`, `Skill`, `todo_write`, `ask_followup_question`, `memory`, `session_search`, `Agent`. Workspace file ops plus task tracking, user clarification, on-demand skills, persistent memory, past-session recall, and sub-agents.
+- **Project Rules** -- Automatically loads `AGENTS.md` and `.miniclaw/rules/*.md` into the system prompt. Project conventions and coding guidelines are always visible to the agent.
 - **Plan Mode** -- The agent can enter a read-only planning phase: explore code, produce a structured plan, then execute only after you approve. Write operations are blocked until you say go.
 - **Skills System** -- Drop a `SKILL.md` into `.miniclaw/skills/<name>/` and the agent learns new tricks. Skills are injected into the system prompt automatically; the `Skill` tool loads full instructions on demand.
 - **Memory** -- Durable facts live in `~/.miniclaw/memory/MEMORY.md` and are auto-injected each session. The agent can read/write topic files for longer notes.
 - **Session Search** -- Conversations are recorded locally; the agent can browse, full-text search, or scroll through past sessions.
 - **Sub-agents** -- Optional `Agent` tool spawns an isolated sub-agent (`explore` / `general`) so research or side tasks don't pollute the main context. Enable with `subagent.enabled`.
 - **Context Management** -- Micro-compaction and auto-summarize keep long conversations within the context window.
+- **Any OpenAI-compatible LLM** -- Swap models by changing one environment variable. Default: MiniMax-M2.7.
 - **Any OpenAI-compatible LLM** -- Swap models by changing one environment variable. Default: MiniMax-M2.7.
 - **Workspace Isolation** -- All file operations are sandboxed to your workspace directory. No `..` path escapes.
 
@@ -99,7 +101,7 @@ The entire agent fits in a handful of Python modules. Here's the core loop:
 flowchart LR
     User([You]) -->|message| REPL[cli.py<br>REPL]
     REPL -->|messages + tools| LLM[api.py<br>LLM API]
-    LLM -->|tool_call| Tools[tools/<br>10 Tools]
+    LLM -->|tool_call| Tools[tools/<br>12 Tools]
     Tools -->|result| LLM
     LLM -->|final reply| REPL
     REPL -->|display| User
@@ -111,7 +113,8 @@ Each module has a single responsibility -- read through them in this order:
 | ------------------------------------------- | -------------------------------------------------------------------------------------- |
 | [`cli.py`](miniclaw/cli.py)                 | Command-line REPL, parses input, handles `/plan`, `/clear`, etc.                       |
 | [`api.py`](miniclaw/api.py)                 | Sends messages to the LLM, runs the tool-call loop until the model stops calling tools |
-| [`tools/`](miniclaw/tools/)                 | Workspace tools + dispatch for `Skill`, `memory`, `session_search`, `Agent`            |
+| [`tools/`](miniclaw/tools/)                 | Workspace tools + dispatch for `Skill`, `todo_write`, `ask_followup_question`, `memory`, `session_search`, `Agent` |
+| [`rules.py`](miniclaw/rules.py)             | Auto-loads `AGENTS.md` and `.miniclaw/rules/*.md` into system prompt                   |
 | [`context/`](miniclaw/context/)             | Micro-compaction, auto-summarize, context window management                            |
 | [`memory/`](miniclaw/memory/)               | Persistent memory store and `memory` tool                                              |
 | [`sessions/`](miniclaw/sessions/)           | Session DB, event records, and `session_search` tool                                   |
@@ -130,7 +133,8 @@ Each module has a single responsibility -- read through them in this order:
 | --------------------- | --------------------------------------- |
 | `/plan`               | Enter plan mode (read-only exploration) |
 | `/plan <description>` | Enter plan mode with a task description |
-| `/clear`              | Clear conversation history              |
+| `/todo` `/todos`      | Show the current task list              |
+| `/clear`              | Clear conversation history (and todos)  |
 | `/model`              | Show current model                      |
 | `/quit` `/exit` `/q`  | Exit                                    |
 
@@ -180,6 +184,19 @@ All `llm` fields can be overridden by environment variables (env vars take prior
 
 Create `.miniclaw/skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `description`) and instructions in the body. The agent sees the skill list at startup and reads the full SKILL.md on demand.
 
+## Rules
+
+Drop an `AGENTS.md` in your workspace root or `.md` files in `.miniclaw/rules/` — they're automatically injected into the system prompt. The agent always sees your project conventions. Supports multiple rule files:
+
+```
+workspace/
+├── AGENTS.md                     # Top-level project rules
+└── .miniclaw/
+    └── rules/
+        ├── style.md              # Coding style guidelines
+        └── security.md           # Security constraints
+```
+
 ## File Layout
 
 ```
@@ -192,6 +209,7 @@ Create `.miniclaw/skills/<skill-name>/SKILL.md` with YAML frontmatter (`name`, `
 {workspace}/.miniclaw/          # Workspace-level (per project)
 ├── config.json                 # Workspace config (higher priority)
 ├── plans/                      # Plan files
+├── rules/                      # Project-specific rule .md files
 └── skills/                     # Skills directory
 ```
 
@@ -205,7 +223,10 @@ miniclaw/
 ├── miniclaw/            # The Python package
 │   ├── cli.py           # REPL
 │   ├── api.py           # LLM API + tool loop
+│   ├── rules.py         # Auto-load AGENTS.md + .miniclaw/rules/*.md
 │   ├── tools/           # Tool implementations + dispatch
+│   │   ├── ask.py       # ask_followup_question tool
+│   │   └── todo_write.py # todo_write tool
 │   ├── context/         # Context compaction + summarization
 │   ├── memory/          # Persistent memory tool
 │   ├── sessions/        # Session records + search
@@ -214,7 +235,7 @@ miniclaw/
 │   ├── config.py        # Path safety + constants
 │   ├── dirs.py          # Directory resolution
 │   ├── settings.py      # Config loading + merge
-│   ├── skills.py        # Skill scanning
+│   ├── skills.py        # Skill scanning + system prompt builder
 │   ├── ui.py            # Terminal UI (rich)
 │   └── dev_logging.py   # Dev logging
 ├── tests/               # Unit tests

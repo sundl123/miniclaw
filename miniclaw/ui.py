@@ -1,5 +1,6 @@
 """终端 UI：启动面板、彩色输出、工具调用格式化。基于 rich 库。"""
 from rich.console import Console
+from rich.padding import Padding
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -37,6 +38,7 @@ def print_banner(model: str, workspace: str) -> None:
     right_lines.append("快捷命令\n", style="bold")
     commands = [
         ("/plan ", "进入规划模式"),
+        ("/todo ", "查看任务清单"),
         ("/clear", "清空对话历史"),
         ("/model", "查看当前模型"),
         ("/quit ", "退出"),
@@ -74,6 +76,52 @@ def print_tool_call(name: str, detail: str, *, indent: int = 0) -> None:
     """打印工具调用摘要。indent>0 时用于嵌套 sub-agent 输出。"""
     pad = "  " * (1 + max(indent, 0))
     console.print(f"{pad}[bold cyan]◆ {name}[/bold cyan] [dim]{detail}[/dim]")
+
+
+_TODO_STYLES = {
+    "pending": "white",
+    "in_progress": "bold yellow",
+    "completed": "dim green",
+    "cancelled": "dim strike",
+}
+
+
+def print_todos(todos: list[dict], *, indent: int = 0) -> None:
+    """打印任务列表面板，让用户看到 AI 当前的计划与进度。
+
+    indent>0 表示这是 sub-agent 自己的清单（与主 agent 相互隔离），
+    缩进并改标题以免与主 agent 的清单混淆。
+    """
+    from miniclaw.tools.todo_write import status_icon
+
+    level = max(indent, 0)
+    pad_width = 2 * (1 + level)
+    if not todos:
+        console.print(f"{' ' * pad_width}[dim]（任务列表已清空）[/dim]")
+        return
+
+    body = Text()
+    done = 0
+    for i, t in enumerate(todos):
+        status = str(t.get("status", "pending"))
+        if status in ("completed", "cancelled"):
+            done += 1
+        if i:
+            body.append("\n")
+        style = _TODO_STYLES.get(status, "white")
+        body.append(f"{status_icon(status)} ", style=style)
+        body.append(str(t.get("content", f"任务 {i + 1}")), style=style)
+
+    label = "子任务清单" if level else "任务清单"
+    color = "magenta" if level else "cyan"
+    panel = Panel(
+        body,
+        title=f"[bold {color}]{label}[/bold {color}] [dim]{done}/{len(todos)}[/dim]",
+        border_style=color,
+        expand=False,
+        padding=(0, 1),
+    )
+    console.print(Padding(panel, (0, 0, 0, pad_width)))
 
 
 def print_agent_start(agent_type: str, description: str, *, depth: int = 1) -> None:

@@ -21,12 +21,20 @@ from miniclaw.settings import (
 )
 from miniclaw.context import format_context_status, manual_compact, init_ctx_mgmt
 from miniclaw.skills import build_system_prompt, discover_skills
+from miniclaw.rules import load_rules
 from miniclaw.memory.store import MemoryStore
 from miniclaw.memory.status import format_memory_status
 from miniclaw.sessions.records import RecordsWriter
 from miniclaw.plan_mode import get_plan_mode_instructions
 from miniclaw.tools import get_tool_schemas
-from miniclaw.ui import print_banner, print_compact_progress, print_error, print_status
+from miniclaw.tools.todo_write import TODOS_CONTEXT_KEY, get_todos
+from miniclaw.ui import (
+    print_banner,
+    print_compact_progress,
+    print_error,
+    print_status,
+    print_todos,
+)
 
 
 def _create_prompt_session() -> PromptSession:
@@ -77,6 +85,7 @@ def _init_session(args: argparse.Namespace) -> dict:
         registry.list_metadata(),
         workspace_root=workspace,
         memory_block=memory_block,
+        rules_block=load_rules(workspace),
     )
 
     return {
@@ -166,10 +175,18 @@ def _repl_loop(session: dict) -> None:
             messages = [{"role": "system", "content": system_prompt}]
             context["mode"] = "agent"
             context.pop("_ctx_mgmt", None)
+            context.pop(TODOS_CONTEXT_KEY, None)
             init_ctx_mgmt(context)
             if records_writer is not None:
                 records_writer.append_meta("session_clear")
             print_status("已清空对话历史")
+            continue
+        if user_input == "/todo" or user_input == "/todos":
+            todos = get_todos(context)
+            if todos:
+                print_todos(todos)
+            else:
+                print_status("当前没有任务清单")
             continue
         if user_input == "/model":
             print_status(f"当前模型: {model}")

@@ -142,6 +142,7 @@ def build_system_prompt(
     *,
     workspace_root: str = None,
     memory_block: str | None = None,
+    rules_block: str | None = None,
 ) -> str:
     """根据技能元数据列表拼接 system prompt。"""
     env_lines = ""
@@ -159,13 +160,22 @@ def build_system_prompt(
     lines = [
         "你是助手，可以使用提供的工具来完成任务。",
         env_lines,
+    ]
+
+    # 项目规则（优先级最高，放在前面）
+    if rules_block:
+        lines.append("## 项目规则\n\n必须严格遵守以下项目规则：\n")
+        lines.append(rules_block)
+        lines.append("")
+
+    lines.extend([
         "## 技能（Skills）",
         "当任务与某个 skill 的描述匹配时，必须先调用 Skill 工具加载，再按 skill 正文执行。",
         "不要跳过 Skill 工具直接回答。",
         path_hint,
         "",
         "## 当前可用技能列表",
-    ]
+    ])
     if skill_metadata_list:
         for s in skill_metadata_list:
             lines.append(f"- {s['name']}: {s['description']}")

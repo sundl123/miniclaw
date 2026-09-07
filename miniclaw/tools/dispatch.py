@@ -16,13 +16,15 @@ from miniclaw.settings import get_plan_allowed_patterns, get_tools_config
 from miniclaw.subagent.tool import handle_agent
 from miniclaw.subagent.types import AGENT_TOOL_NAME
 from miniclaw.tool_output import cap_tool_result
+from miniclaw.tools.ask import handle_ask
 from miniclaw.tools.bash import handle_bash
 from miniclaw.tools.config import ToolsConfig
 from miniclaw.tools.read import handle_read
 from miniclaw.tools.search import handle_glob, handle_grep
 from miniclaw.tools.skill import handle_skill
+from miniclaw.tools.todo_write import get_todos, handle_todo_write
 from miniclaw.tools.write import handle_edit, handle_write
-from miniclaw.ui import print_tool_call
+from miniclaw.ui import print_todos, print_tool_call
 
 TOOL_HANDLERS = {
     "read": handle_read,
@@ -34,6 +36,8 @@ TOOL_HANDLERS = {
     "Skill": handle_skill,
     "memory": handle_memory,
     "session_search": handle_session_search,
+    "todo_write": handle_todo_write,
+    "ask_followup_question": handle_ask,
     AGENT_TOOL_NAME: handle_agent,
 }
 
@@ -55,6 +59,12 @@ def _print_tool_invocation(name: str, args: dict, *, context: dict | None = None
         detail = f"pattern={args.get('pattern', '')} path={args.get('path', '.')}"
     elif name == "Skill":
         detail = f"skill={args.get('skill', '')}"
+    elif name == "todo_write":
+        todos = args.get("todos", [])
+        merge = args.get("merge", False)
+        detail = f"{'merge' if merge else 'replace'} {len(todos)} items"
+    elif name == "ask_followup_question":
+        detail = f"q={str(args.get('question', ''))[:60]}"
     elif name == "memory":
         detail = f"action={args.get('action', '')} path={args.get('path', '')}"
     elif name == "session_search":
@@ -150,6 +160,9 @@ def execute_tool(
                 current_session_id=ctx.get("session_id"),
                 config=ctx.get("sessions_config"),
             )
+        elif name == "todo_write":
+            result = handler(args, root, tools_cfg=cfg, context=ctx)
+            print_todos(get_todos(ctx), indent=int(ctx.get("agent_depth") or 0))
         else:
             result = handler(args, root, tools_cfg=cfg)
     except PermissionError as e:

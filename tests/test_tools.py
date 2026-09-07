@@ -502,12 +502,13 @@ class TestExecuteTool(unittest.TestCase):
 
 
 class TestGetToolSchemas(unittest.TestCase):
-    def test_returns_nine_tools(self):
+    def test_returns_eleven_tools(self):
         schemas = get_tool_schemas()
-        self.assertEqual(len(schemas), 9)
+        self.assertEqual(len(schemas), 11)
         names = {s["function"]["name"] for s in schemas}
         self.assertEqual(names, {
             "read", "write", "edit", "glob", "grep", "bash", "Skill",
+            "todo_write", "ask_followup_question",
             "enter_plan_mode", "exit_plan_mode",
         })
 
